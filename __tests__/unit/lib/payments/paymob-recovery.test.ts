@@ -974,4 +974,246 @@ describe("Paymob Payment Recovery", () => {
     }
   }, 30000);
 
+
+  // P0_PURCHASED_DURATION_REGRESSION_R15
+  // Actual isolated DB recovery: a later plan edit must never alter
+  // the purchased 90-day or 180-day entitlement.
+  for (const purchasedDays of [90, 180] as const) {
+    it(
+      `P0 purchased ${purchasedDays} days survives plan edit and payment replay`,
+      async () => {
+        const changedPlanDays = purchasedDays === 90 ? 180 : 90;
+
+        // The customer has already purchased this duration.
+        await db.userMembership.update({
+          where: { id: testUserMembershipId },
+          data: {
+            snapshotDurationDays: purchasedDays,
+            endDate: new Date(
+              Date.now() + purchasedDays * 86400000,
+            ),
+          },
+        });
+
+        // The admin subsequently changes the catalog plan.
+        await db.membership.update({
+          where: { id: testMembershipPlanId },
+          data: { duration: changedPlanDays },
+        });
+
+        const input: VerifiedPaymobRecoveryInput = {
+          paymentTransactionId: testPaymentId,
+          paymobTransactionId: "512944958",
+          expectedAmount: 333,
+          expectedCurrency: "EGP",
+          expectedFitZoneReference: testReferenceCode,
+          expectedIntentionId: "pi_live_test_intention_123",
+        };
+
+        const first = await recoverVerifiedPaymobPayment(input);
+        expect(first.status).toBe("paid");
+
+        const activated = await db.userMembership.findUniqueOrThrow({
+          where: { id: testUserMembershipId },
+        });
+
+        expect(activated.status).toBe("active");
+        expect(activated.snapshotDurationDays).toBe(purchasedDays);
+        expect(activated.startDate).toBeInstanceOf(Date);
+        expect(activated.endDate).toBeInstanceOf(Date);
+
+        const expectedMilliseconds = purchasedDays * 86400000;
+        const actualMilliseconds =
+          activated.endDate.getTime() -
+          activated.startDate.getTime();
+
+        expect(Math.abs(actualMilliseconds - expectedMilliseconds))
+          .toBeLessThanOrEqual(1000);
+
+        // Repeat the verified recovery: no extra duration or new start.
+        const second = await recoverVerifiedPaymobPayment(input);
+        expect(second.status).toBe("paid");
+
+        const repeated = await db.userMembership.findUniqueOrThrow({
+          where: { id: testUserMembershipId },
+        });
+
+        expect(repeated.startDate.getTime()).toBe(
+          activated.startDate.getTime(),
+        );
+        expect(repeated.endDate.getTime()).toBe(
+          activated.endDate.getTime(),
+        );
+        expect(repeated.snapshotDurationDays).toBe(purchasedDays);
+
+        const plan = await db.membership.findUniqueOrThrow({
+          where: { id: testMembershipPlanId },
+        });
+
+        expect(plan.duration).toBe(changedPlanDays);
+
+        console.log(
+          `P0_PURCHASE_${purchasedDays}_PLAN_${changedPlanDays}=PASS`,
+        );
+        console.log(
+          `P0_PURCHASE_${purchasedDays}_EXACT_RETRY=PASS`,
+        );
+      },
+      20000,
+    );
+  }
+
+  // P0_LEGACY_INVOICE_REGRESSION_R19
+  // All cases use the existing Paymob verification and Order-proof mocks.
+  for (const purchasedDays of [90, 180] as const) {
+    it(`P0 legacy invoice ${purchasedDays} days survives changed plan`, async () => {
+      const purchasedStart = new Date("2026-11-08T22:00:00.000Z");
+      const purchasedEnd = new Date(
+        purchasedStart.getTime() + purchasedDays * 86400000,
+      );
+      const currentPlanDays = purchasedDays === 90 ? 180 : 90;
+
+      await db.userMembership.update({
+        where: { id: testUserMembershipId },
+        data: {
+          snapshotDurationDays: null,
+          startDate: purchasedStart,
+          endDate: purchasedEnd,
+        },
+      });
+
+      await db.membership.update({
+        where: { id: testMembershipPlanId },
+        data: { duration: currentPlanDays },
+      });
+
+      const existingPayment = await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: testPaymentId },
+      });
+      const existingMetadata = existingPayment.metadata
+        ? JSON.parse(existingPayment.metadata)
+        : {};
+
+      await db.paymentTransaction.update({
+        where: { id: testPaymentId },
+        data: {
+          metadata: JSON.stringify({
+            ...existingMetadata,
+            membershipInvoice: {
+              startDate: purchasedStart.toISOString(),
+              endDate: purchasedEnd.toISOString(),
+              finalAmount: 333,
+            },
+          }),
+        },
+      });
+
+      const input: VerifiedPaymobRecoveryInput = {
+        paymentTransactionId: testPaymentId,
+        paymobTransactionId: "512944958",
+        expectedAmount: 333,
+        expectedCurrency: "EGP",
+        expectedFitZoneReference: testReferenceCode,
+        expectedIntentionId: "pi_live_test_intention_123",
+      };
+
+      const result = await recoverVerifiedPaymobPayment(input);
+      expect(result.status).toBe("paid");
+
+      const activated = await db.userMembership.findUniqueOrThrow({
+        where: { id: testUserMembershipId },
+      });
+
+      expect(activated.status).toBe("active");
+      expect(activated.snapshotDurationDays).toBeNull();
+      expect(
+        Math.abs(
+          activated.endDate.getTime() -
+          activated.startDate.getTime() -
+          purchasedDays * 86400000,
+        ),
+      ).toBeLessThanOrEqual(1000);
+
+      const repeated = await recoverVerifiedPaymobPayment(input);
+      expect(repeated.status).toBe("paid");
+
+      const afterRetry = await db.userMembership.findUniqueOrThrow({
+        where: { id: testUserMembershipId },
+      });
+
+      expect(afterRetry.startDate.getTime()).toBe(
+        activated.startDate.getTime(),
+      );
+      expect(afterRetry.endDate.getTime()).toBe(
+        activated.endDate.getTime(),
+      );
+    }, 20000);
+  }
+
+  for (const failureMode of ["missing", "conflicting"] as const) {
+    it(`P0 legacy invoice ${failureMode} refuses unproven duration`, async () => {
+      const originalStart = new Date("2026-11-08T22:00:00.000Z");
+      const originalEnd = new Date(
+        originalStart.getTime() + 90 * 86400000,
+      );
+
+      await db.userMembership.update({
+        where: { id: testUserMembershipId },
+        data: {
+          snapshotDurationDays: null,
+          startDate: originalStart,
+          endDate: originalEnd,
+        },
+      });
+
+      const existingPayment = await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: testPaymentId },
+      });
+
+      const existingMetadata = existingPayment.metadata
+        ? JSON.parse(existingPayment.metadata)
+        : {};
+
+      delete existingMetadata.membershipInvoice;
+
+      if (failureMode === "conflicting") {
+        existingMetadata.membershipInvoice = {
+          startDate: originalStart.toISOString(),
+          endDate: new Date(
+            originalStart.getTime() + 180 * 86400000,
+          ).toISOString(),
+          finalAmount: 333,
+        };
+      }
+
+      await db.paymentTransaction.update({
+        where: { id: testPaymentId },
+        data: { metadata: JSON.stringify(existingMetadata) },
+      });
+
+      await expect(
+        recoverVerifiedPaymobPayment({
+          paymentTransactionId: testPaymentId,
+          paymobTransactionId: "512944958",
+          expectedAmount: 333,
+          expectedCurrency: "EGP",
+          expectedFitZoneReference: testReferenceCode,
+          expectedIntentionId: "pi_live_test_intention_123",
+        }),
+      ).rejects.toThrow("PURCHASE_DURATION_PROOF_REQUIRED");
+
+      const membership = await db.userMembership.findUniqueOrThrow({
+        where: { id: testUserMembershipId },
+      });
+      const payment = await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: testPaymentId },
+      });
+
+      expect(membership.status).toBe("pending_payment");
+      expect(membership.endDate.getTime()).toBe(
+        originalEnd.getTime(),
+      );
+      expect(payment.status).toBe("pending");
+    }, 20000);
+  }
 });

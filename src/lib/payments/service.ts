@@ -444,10 +444,78 @@ async function activatePaidMembershipTx(
     return { success: false, membershipData: null };
   }
 
-  const now = new Date();
-  const duration =
-    membership.snapshotDurationDays ?? membership.membership.duration ?? 30;
+  // P0_LEGACY_PURCHASE_DURATION_GUARD_R18D
+  // The mutable catalog plan is never proof of purchased duration.
   const preserveExistingDates = options?.preserveExistingDates === true;
+  const snapshotDays = membership.snapshotDurationDays;
+  let duration: number;
+
+  if (
+    snapshotDays !== null &&
+    snapshotDays !== undefined
+  ) {
+    if (
+      !Number.isSafeInteger(snapshotDays) ||
+      snapshotDays <= 0 ||
+      snapshotDays > 3650
+    ) {
+      throw new Error("PURCHASE_DURATION_PROOF_REQUIRED");
+    }
+    duration = snapshotDays;
+  } else {
+    // Legacy checkout without snapshot: prove the original term
+    // from the linked payment's invoice and original pending dates.
+    const linkedPayment = await tx.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      select: {
+        membershipId: true,
+        userId: true,
+      },
+    });
+
+    const invoice = toInvoiceDetails(paymentMetadata);
+    const originalStart = membership.startDate;
+    const originalEnd = membership.endDate;
+
+    if (
+      !linkedPayment ||
+      linkedPayment.membershipId !== membershipId ||
+      linkedPayment.userId !== membership.userId ||
+      !invoice?.startDate ||
+      !invoice.endDate ||
+      !originalStart ||
+      !originalEnd
+    ) {
+      throw new Error("PURCHASE_DURATION_PROOF_REQUIRED");
+    }
+
+    const invoiceMs =
+      invoice.endDate.getTime() - invoice.startDate.getTime();
+    const candidate = Math.round(invoiceMs / 86400000);
+
+    const originalDatesMatch =
+      Math.abs(
+        invoice.startDate.getTime() - originalStart.getTime(),
+      ) <= 60000 &&
+      Math.abs(
+        invoice.endDate.getTime() - originalEnd.getTime(),
+      ) <= 60000;
+
+    if (
+      !Number.isSafeInteger(candidate) ||
+      candidate <= 0 ||
+      candidate > 3650 ||
+      Math.abs(invoiceMs - candidate * 86400000) > 3600000 ||
+      !originalDatesMatch
+    ) {
+      throw new Error("PURCHASE_DURATION_PROOF_REQUIRED");
+    }
+
+    duration = candidate;
+  }
+
+  const now = new Date();
+
 
   if (
     preserveExistingDates &&

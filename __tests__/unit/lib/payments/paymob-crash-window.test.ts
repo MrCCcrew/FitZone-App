@@ -16,6 +16,7 @@ vi.mock("@/lib/payments/providers/paymob", async () => {
   return {
     ...actual,
     verifyPaymobTransactionForRecovery: vi.fn(),
+    confirmPaymobOrderPaidForRecovery: vi.fn(),
   };
 });
 
@@ -122,6 +123,15 @@ describe("Payment Crash-Window Recovery", () => {
 
     // Mock successful Paymob verification
     // LIVE PAYMOB RESPONSE: merchant_order_id proves linkage, special_reference is NULL
+    vi.mocked(paymobProvider.confirmPaymobOrderPaidForRecovery)
+      .mockImplementation(async (proof) =>
+        proof.paymentId === testPaymentId &&
+        String(proof.paymobOrderId) === "584723754" &&
+        String(proof.paymobTransactionId) === "999888777" &&
+        proof.amount === 450 &&
+        proof.currency === "EGP",
+      );
+
     vi.mocked(paymobProvider.verifyPaymobTransactionForRecovery).mockImplementation(
       async (paymobTxId, localTxId) => ({
         verified: true,

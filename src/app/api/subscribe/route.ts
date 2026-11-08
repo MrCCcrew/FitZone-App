@@ -1682,9 +1682,9 @@ export async function POST(req: Request) {
           eligibilitySnapshot,
           offerSnapshot,
           allowedClassTypesSnapshot,
-          snapshotDurationDays: offerRecord ? effectiveDurationDays : null,
-          snapshotOriginalPrice: offerRecord ? originalPrice : null,
-          snapshotFinalPrice: offerRecord ? (paymentAmount ?? 0) : null,
+          snapshotDurationDays: effectiveDurationDays,
+          snapshotOriginalPrice: originalPrice,
+          snapshotFinalPrice: paymentAmount ?? 0,
           productRewardsUsed: productRewards.length
             ? JSON.stringify(productRewards)
             : null,

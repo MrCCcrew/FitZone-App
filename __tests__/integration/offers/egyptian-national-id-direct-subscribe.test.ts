@@ -308,4 +308,98 @@ describe("direct /api/subscribe student Egyptian-ID security integration", () =>
     expect(await db.userMembership.count({ where: { userId, status: "active" } })).toBe(0);
     expect((await db.offer.findUniqueOrThrow({ where: { id: offerId } })).currentSubscribers).toBe(0);
   }, 20000);
+
+  // P0_REGULAR_PURCHASE_SNAPSHOT_R44
+  it("P0 regular subscription freezes 90 days when catalog becomes 180", async () => {
+    await db.membership.update({
+      where: { id: membershipId },
+      data: { duration: 90 },
+    });
+
+    try {
+      mocks.createPaymentTransaction.mockImplementationOnce(async (input: {
+        userId: string;
+        amount: number;
+        membershipId?: string | null;
+        metadata?: unknown;
+      }) => {
+        expect(input.userId).toBe(userId);
+        expect(input.amount).toBe(100);
+
+        const payment = await db.paymentTransaction.create({
+          data: {
+            userId: input.userId,
+            membershipId: input.membershipId ?? null,
+            amount: input.amount,
+            provider: "paymob",
+            purpose: "membership",
+            businessUnit: "club",
+            paymentMethod: "membership",
+            status: "pending",
+            currency: "EGP",
+            metadata: JSON.stringify(input.metadata ?? {}),
+          },
+        });
+
+        return {
+          id: payment.id,
+          checkoutUrl: "https://checkout.example.test/mock",
+        };
+      });
+
+      const response = await subscribe(new Request(
+        "http://localhost/api/subscribe",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            membershipId,
+            offerId: null,
+            scheduleIds: [],
+            paymentMethod: "paymob",
+          }),
+        },
+      ));
+
+      const body = await response.json();
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      expect(body.success).toBe(true);
+      expect(typeof body.subscriptionId).toBe("string");
+
+      const purchased = await db.userMembership.findUniqueOrThrow({
+        where: { id: body.subscriptionId },
+      });
+
+      expect(purchased).toMatchObject({
+        userId,
+        membershipId,
+        offerId: null,
+        status: "pending_payment",
+        snapshotDurationDays: 90,
+        snapshotOriginalPrice: 100,
+        snapshotFinalPrice: 100,
+      });
+
+      await db.membership.update({
+        where: { id: membershipId },
+        data: { duration: 180 },
+      });
+
+      const afterPlanEdit = await db.userMembership.findUniqueOrThrow({
+        where: { id: body.subscriptionId },
+      });
+
+      expect(afterPlanEdit.snapshotDurationDays).toBe(90);
+      expect(afterPlanEdit.snapshotOriginalPrice).toBe(100);
+      expect(afterPlanEdit.snapshotFinalPrice).toBe(100);
+      expect(afterPlanEdit.status).toBe("pending_payment");
+      expect(mocks.createPaymentTransaction).toHaveBeenCalledTimes(1);
+    } finally {
+      await db.membership.update({
+        where: { id: membershipId },
+        data: { duration: 30 },
+      });
+    }
+  }, 20000);
+
 });
