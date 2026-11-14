@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -18,12 +19,24 @@ if (!raw) {
 const url = new URL(raw);
 
 if (
-  process.env.APP_ENV !== "test" ||
+  (
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1"
+      ? !(
+          process.env.APP_ENV === "test" &&
+          process.env.NODE_ENV === "test" &&
+          url.protocol === "mysql:" &&
+          url.hostname === "127.0.0.1" &&
+          url.port === "3306" &&
+          url.pathname === "/fitzone_final_release_r13_test" &&
+          decodeURIComponent(url.username) === "fitzone_r13_user"
+        )
+      : (process.env.APP_ENV !== "test" ||
   process.env.NODE_ENV !== "test" ||
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  url.pathname !== "/fitzone_test")
+  )
 ) {
   throw new Error(
     "REFUSING: Employee Core API tests require fitzone_test as fitzone_test_user",
@@ -117,39 +130,58 @@ function request(path: string, method: string, body?: Record<string, unknown>) {
   });
 }
 
+const r15zuOwned = {
+  employeeIds: new Set<string>(),
+  departmentIds: new Set<string>(),
+  positionIds: new Set<string>(),
+};
+
+let r15zuOwnershipArmed = false;
+
+async function r15zuCaptureOwned() {
+  if (!r15zuOwnershipArmed) return;
+
+  const [employees, departments, positions] = await Promise.all([
+    db.employeeProfile.findMany({
+      where: { employeeCode: { startsWith: "TEST-HR-" } },
+      select: { id: true },
+    }),
+    db.department.findMany({
+      where: { code: { startsWith: "TEST_HR_" } },
+      select: { id: true },
+    }),
+    db.position.findMany({
+      where: { code: { startsWith: "TEST_HR_" } },
+      select: { id: true },
+    }),
+  ]);
+
+  for (const row of employees) r15zuOwned.employeeIds.add(row.id);
+  for (const row of departments) r15zuOwned.departmentIds.add(row.id);
+  for (const row of positions) r15zuOwned.positionIds.add(row.id);
+}
+
 async function cleanup() {
+  if (!r15zuOwnershipArmed) return;
+
+  await r15zuCaptureOwned();
+
   await db.employeeProfile.deleteMany({
-    where: {
-      employeeCode: {
-        startsWith: "TEST-HR-",
-      },
-    },
+    where: { id: { in: [...r15zuOwned.employeeIds] } },
   });
 
   if (createdUserIds.length) {
     await db.user.deleteMany({
-      where: {
-        id: {
-          in: createdUserIds.splice(0),
-        },
-      },
+      where: { id: { in: createdUserIds.splice(0) } },
     });
   }
 
   await db.department.deleteMany({
-    where: {
-      code: {
-        startsWith: "TEST_HR_",
-      },
-    },
+    where: { id: { in: [...r15zuOwned.departmentIds] } },
   });
 
   await db.position.deleteMany({
-    where: {
-      code: {
-        startsWith: "TEST_HR_",
-      },
-    },
+    where: { id: { in: [...r15zuOwned.positionIds] } },
   });
 }
 
@@ -189,7 +221,24 @@ async function createInternalEmployee(
 
 beforeAll(async () => {
   await db.$connect();
-  await cleanup();
+
+  const r15zuCollisions = await Promise.all([
+    db.employeeProfile.count({
+      where: { employeeCode: { startsWith: "TEST-HR-" } },
+    }),
+    db.department.count({
+      where: { code: { startsWith: "TEST_HR_" } },
+    }),
+    db.position.count({
+      where: { code: { startsWith: "TEST_HR_" } },
+    }),
+  ]);
+
+  if (r15zuCollisions.some(count => count !== 0)) {
+    throw new Error("R15ZU_PREEXISTING_FIXTURE_COLLISION");
+  }
+
+  r15zuOwnershipArmed = true;
 
   const department = await db.department.create({
     data: {
@@ -215,6 +264,10 @@ beforeAll(async () => {
 beforeEach(() => {
   guardState.mode = "allowed";
   guardState.lastPermission = "";
+});
+
+afterEach(async () => {
+  await r15zuCaptureOwned();
 });
 
 afterAll(async () => {

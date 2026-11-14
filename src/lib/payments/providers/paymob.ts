@@ -356,7 +356,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
 
   const expirationSeconds = resolvePaymobIntentionExpiration({
     membershipHoldExpiresAt:
-      input.purpose === "membership"
+      input.purpose === "membership" || input.purpose === "offer_box"
         ? input.membershipHoldExpiresAt
         : null,
     now: checkoutStartedAt,

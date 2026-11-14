@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
@@ -30,11 +30,23 @@ if (!raw) {
 const url = new URL(raw);
 
 if (
-  process.env.APP_ENV !== "test" ||
+  (
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1"
+      ? !(
+          process.env.APP_ENV === "test" &&
+          process.env.NODE_ENV === "test" &&
+          url.protocol === "mysql:" &&
+          url.hostname === "127.0.0.1" &&
+          url.port === "3306" &&
+          url.pathname === "/fitzone_final_release_r13_test" &&
+          decodeURIComponent(url.username) === "fitzone_r13_user"
+        )
+      : (process.env.APP_ENV !== "test" ||
   process.env.NODE_ENV !== "test" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  url.pathname !== "/fitzone_test")
+  )
 ) {
   throw new Error("REFUSING: coach API tests require fitzone_test");
 }
@@ -42,6 +54,7 @@ if (
 const db = new PrismaClient();
 
 const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const r15zrOwnedPeriodIds = new Set<string>();
 
 let adminId = "";
 
@@ -153,9 +166,8 @@ async function cleanup() {
 
   await db.attendancePeriod.deleteMany({
     where: {
-      monthKey: {
-        in: ["2032-01", "2032-02"],
-      },
+      id: { in: [...r15zrOwnedPeriodIds] },
+      monthKey: { in: ["2032-01", "2032-02"] },
     },
   });
 
@@ -230,6 +242,12 @@ async function cleanup() {
 }
 
 beforeAll(async () => {
+  const r15zqExistingPeriods = await db.attendancePeriod.count({
+    where: { monthKey: { in: ["2032-01", "2032-02"] } },
+  });
+  if (r15zqExistingPeriods !== 0) {
+    throw new Error("R15ZQ_COACH_PERIOD_COLLISION");
+  }
   await cleanup();
 
   const admin = await db.user.create({
@@ -335,6 +353,17 @@ beforeAll(async () => {
   unlinkedScheduleId = (
     await createSchedule(unlinkedClassId, "2032-01-08", "13:00")
   ).id;
+});
+
+afterEach(async () => {
+  const periods = await db.attendancePeriod.findMany({
+    where: { monthKey: { in: ["2032-01", "2032-02"] } },
+    select: { id: true },
+  });
+
+  for (const period of periods) {
+    r15zrOwnedPeriodIds.add(period.id);
+  }
 });
 
 afterAll(async () => {

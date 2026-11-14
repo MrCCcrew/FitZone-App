@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/app-session", () => ({ getCurrentAppUser: mocks.getCurrentAppUser }));
 vi.mock("@/lib/db", () => ({
+  asDbTransactionClient: (tx: unknown) => tx,
   db: {
     $transaction: mocks.transaction,
     schedule: { findUnique: mocks.findSchedule, update: mocks.updateSchedule },
@@ -86,6 +87,10 @@ describe("POST /api/bookings membership eligibility", () => {
     mocks.queryRaw.mockImplementation(
       async (strings: TemplateStringsArray, id: string) => {
         const sql = strings.join(" ");
+
+        if (sql.includes("FROM `User`")) {
+          return [{ id }];
+        }
 
         if (sql.includes("FROM `UserMembership`")) {
           return [

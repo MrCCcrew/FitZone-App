@@ -1,4 +1,9 @@
-import { db } from "@/lib/db";
+import { asDbTransactionClient, db } from "@/lib/db";
+import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
+import {
+  parseEligibilityPolicySnapshot,
+  isClassAllowedByEligibilitySnapshot,
+} from "@/lib/get-eligible-classes";
 import { isBookingOperational } from "@/lib/booking-operational";
 import {
   cairoCalendarDateKey,
@@ -76,6 +81,255 @@ function fail(
   throw new BookingRescheduleDomainError(code, details);
 }
 
+async function validateIndependentOfferReplacement(
+  tx: ReturnType<typeof asDbTransactionClient>,
+  input: {
+    userId: string;
+    bookingId: string;
+    entitlementId: string;
+    targetScheduleId: string;
+    isPastAbsence: boolean;
+    restoreCancelled?: boolean;
+  },
+) {
+  const entitlement = await tx.offerBoxEntitlement.findUnique({
+    where: { id: input.entitlementId },
+    include: {
+      purchase: {
+        select: {
+          userId: true,
+          status: true,
+          paidAt: true,
+          redeemedUserMembershipId: true,
+        },
+      },
+    },
+  });
+
+  if (
+    !entitlement ||
+    entitlement.userId !== input.userId ||
+    entitlement.status !== "active" ||
+    entitlement.purchase.userId !== input.userId ||
+    entitlement.purchase.status !== "redeemed" ||
+    !entitlement.purchase.paidAt ||
+    entitlement.purchase.redeemedUserMembershipId !== null
+  ) {
+    fail("BOOKING_NOT_OPERATIONAL");
+  }
+
+  const original = await tx.booking.findUnique({
+    where: { id: input.bookingId },
+  });
+
+  if (
+    !original ||
+    original.userId !== input.userId ||
+    original.userMembershipId !== null ||
+    original.offerBoxEntitlementId !== entitlement.id ||
+    (input.restoreCancelled
+      ? original.status !== "cancelled"
+      : input.isPastAbsence
+        ? !["confirmed", "noshow"].includes(original.status)
+        : original.status !== "confirmed")
+  ) {
+    fail("BOOKING_NOT_ELIGIBLE");
+  }
+
+  if (
+    original.scheduleId === input.targetScheduleId &&
+    !input.restoreCancelled
+  ) {
+    fail("SAME_SCHEDULE");
+  }
+
+  if (
+    input.restoreCancelled &&
+    original.scheduleId !== input.targetScheduleId
+  ) {
+    fail("BOOKING_NOT_ELIGIBLE");
+  }
+
+  if (input.isPastAbsence) {
+    const previous = await tx.bookingRescheduleRequest.findFirst({
+      where: {
+        bookingId: original.id,
+        requestType: "past_absence_makeup",
+        status: "approved",
+      },
+      select: { id: true },
+    });
+
+    if (previous) fail("BOOKING_NOT_ELIGIBLE");
+  }
+
+  const eligibility = parseEligibilityPolicySnapshot(
+    entitlement.eligibilitySnapshot,
+  );
+
+  if (!eligibility || !entitlement.bookingPatternSnapshot) {
+    fail("BOOKING_NOT_ELIGIBLE");
+  }
+
+  const target = await tx.schedule.findUnique({
+    where: { id: input.targetScheduleId },
+    include: { class: true },
+  });
+
+  if (!target) fail("TARGET_NOT_FOUND");
+
+  if (!target.isActive || !target.class.isActive) {
+    fail("TARGET_NOT_ACTIVE");
+  }
+
+  const now = new Date();
+  const slot = scheduleSlotInstant(target.date, target.time);
+
+  if (
+    !Number.isFinite(slot.getTime()) ||
+    slot.getTime() <= now.getTime()
+  ) {
+    fail("TARGET_SLOT_PASSED");
+  }
+
+  const day = cairoCalendarDateKey(slot);
+  const start = cairoCalendarDateKey(entitlement.startDate);
+  const end = cairoCalendarDateKey(entitlement.endDate);
+  const today = cairoCalendarDateKey(now);
+
+  if (
+    today < start ||
+    today > end ||
+    day < start ||
+    day > end
+  ) {
+    fail("TARGET_OUTSIDE_MEMBERSHIP_PERIOD");
+  }
+
+  if (!(await isClassAllowedByEligibilitySnapshot(
+    eligibility,
+    target.classId,
+    tx,
+  ))) {
+    fail("CLASS_NOT_INCLUDED");
+  }
+
+  try {
+    await assertUserCanBookClassByHealth(
+      tx,
+      input.userId,
+      target.class.type,
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "HEALTH_RESTRICTION_BLOCKED"
+    ) {
+      fail("HEALTH_RESTRICTION_BLOCKED");
+    }
+
+    throw error;
+  }
+
+  const conflict = await tx.booking.findFirst({
+    where: {
+      id: { not: original.id },
+      userId: input.userId,
+      status: { in: ["confirmed", "attended", "noshow"] },
+      schedule: {
+        date: target.date,
+        time: target.time,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (conflict) fail("TARGET_ALREADY_BOOKED");
+
+  const existing = await tx.booking.findMany({
+    where: {
+      id: { not: original.id },
+      userId: input.userId,
+      userMembershipId: null,
+      offerBoxEntitlementId: entitlement.id,
+      status: { in: ["confirmed", "attended", "noshow"] },
+      NOT: {
+        status: "noshow",
+        rescheduleRequests: {
+          some: {
+            requestType: "past_absence_makeup",
+            status: "approved",
+          },
+        },
+      },
+    },
+    select: {
+      entitlementUnits: true,
+      schedule: {
+        select: {
+          date: true,
+          time: true,
+          classId: true,
+        },
+      },
+    },
+  });
+
+  const units = (value: number) => {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      fail("BOOKING_NOT_ELIGIBLE");
+    }
+    return value;
+  };
+
+  const allocated = existing.reduce(
+    (sum, row) => sum + units(row.entitlementUnits),
+    0,
+  );
+
+  if (
+    entitlement.totalSessions !== null &&
+    allocated + units(original.entitlementUnits) >
+      entitlement.totalSessions
+  ) {
+    fail("BOOKING_NOT_ELIGIBLE");
+  }
+
+  const sameDay = existing.filter((row) =>
+    cairoCalendarDateKey(
+      scheduleSlotInstant(
+        row.schedule.date,
+        row.schedule.time,
+      ),
+    ) === day,
+  );
+
+  const limit = getFrozenMaxSessionsPerDay(
+    entitlement.bookingPatternSnapshot,
+    2,
+  );
+
+  if (sameDay.length >= limit) {
+    fail("DAILY_SESSION_LIMIT_REACHED");
+  }
+
+  if (
+    getFrozenRequireDistinctClassesPerDay(
+      entitlement.bookingPatternSnapshot,
+    ) &&
+    sameDay.some(
+      (row) => row.schedule.classId === target.classId,
+    )
+  ) {
+    fail("DISTINCT_CLASS_REQUIRED");
+  }
+
+  return {
+    entitlementId: entitlement.id,
+    originalUnits: units(original.entitlementUnits),
+  };
+}
+
 function normalizeRequestType(
   value: BookingRescheduleRequestType | undefined,
 ): BookingRescheduleRequestType {
@@ -149,7 +403,13 @@ export async function createBookingRescheduleRequest(input: {
   const isActiveMembershipNoshowMakeup =
     isPastAbsence &&
     booking.status === "noshow" &&
-    booking.userMembership?.status === "active";
+    (
+      booking.userMembership?.status === "active" ||
+      (
+        booking.offerBoxEntitlementId !== null &&
+        booking.userMembershipId === null
+      )
+    );
 
   if (
     !isBookingOperational(booking) &&
@@ -273,6 +533,24 @@ export async function createBookingRescheduleRequest(input: {
    * membership expiry is a separate, currently unproven business-policy
    * question and is deliberately NOT changed by this refactor.
    */
+  if (booking.offerBoxEntitlementId) {
+    if (booking.userMembershipId !== null) {
+      fail("BOOKING_NOT_ELIGIBLE");
+    }
+
+    await db.$transaction(async (tx) => {
+      await validateIndependentOfferReplacement(
+        asDbTransactionClient(tx),
+        {
+          userId: input.userId,
+          bookingId: booking.id,
+          entitlementId: booking.offerBoxEntitlementId!,
+          targetScheduleId: targetSchedule.id,
+          isPastAbsence,
+        },
+      );
+    });
+  } else {
   const activeMemberships = await db.userMembership.findMany({
     where: {
       userId: input.userId,
@@ -318,6 +596,8 @@ export async function createBookingRescheduleRequest(input: {
     fail("CLASS_NOT_INCLUDED");
   }
 
+
+  }
   const existingRequest =
     await db.bookingRescheduleRequest.findUnique({
       where: {
@@ -562,7 +842,57 @@ export async function reviewBookingRescheduleRequest(input: {
 
   const reviewedAt = new Date();
 
+  const approvalIdentity =
+    await db.bookingRescheduleRequest.findUnique({
+      where: { id: input.requestId },
+      select: {
+        bookingId: true,
+        targetScheduleId: true,
+        booking: {
+          select: {
+            userId: true,
+            scheduleId: true,
+            offerBoxEntitlementId: true,
+          },
+        },
+      },
+    });
+
   return db.$transaction(async (tx) => {
+    if (approvalIdentity?.booking.offerBoxEntitlementId) {
+      await lockMembershipLifecycleUserTx(
+        asDbTransactionClient(tx),
+        approvalIdentity.booking.userId,
+      );
+
+      await tx.$queryRaw`
+        SELECT id FROM OfferBoxEntitlement
+        WHERE id = ${approvalIdentity.booking.offerBoxEntitlementId}
+        FOR UPDATE
+      `;
+
+      const scheduleIds = [
+        ...new Set([
+          approvalIdentity.booking.scheduleId,
+          approvalIdentity.targetScheduleId,
+        ]),
+      ].sort();
+
+      for (const scheduleId of scheduleIds) {
+        await tx.$queryRaw`
+          SELECT id FROM Schedule
+          WHERE id = ${scheduleId}
+          FOR UPDATE
+        `;
+      }
+
+      await tx.$queryRaw`
+        SELECT id FROM Booking
+        WHERE id = ${approvalIdentity.bookingId}
+        FOR UPDATE
+      `;
+    }
+
     const request =
       await tx.bookingRescheduleRequest.findUnique({
         where: {
@@ -601,6 +931,23 @@ export async function reviewBookingRescheduleRequest(input: {
       request.pendingKey !== request.bookingId
     ) {
       fail("REQUEST_ALREADY_REVIEWED");
+    }
+
+    if (
+      request.booking.offerBoxEntitlementId &&
+      (
+        request.booking.userMembershipId !== null ||
+        request.booking.offerBoxEntitlementId !==
+          approvalIdentity?.booking.offerBoxEntitlementId ||
+        request.booking.userId !==
+          approvalIdentity?.booking.userId ||
+        request.booking.scheduleId !==
+          approvalIdentity?.booking.scheduleId ||
+        request.targetScheduleId !==
+          approvalIdentity?.targetScheduleId
+      )
+    ) {
+      fail("BOOKING_CHANGED");
     }
 
     const isPastAbsenceMakeup =
@@ -714,6 +1061,25 @@ export async function reviewBookingRescheduleRequest(input: {
      * Preserve current policy: approval selects only a currently-active
      * membership and does not extend contractual endDate.
      */
+    let targetMembershipId: string | null = null;
+    let independentEntitlementId: string | null = null;
+    let independentOriginalUnits = 1;
+
+    if (request.booking.offerBoxEntitlementId) {
+      const validated = await validateIndependentOfferReplacement(
+        asDbTransactionClient(tx),
+        {
+          userId: request.booking.userId,
+          bookingId: request.booking.id,
+          entitlementId: request.booking.offerBoxEntitlementId,
+          targetScheduleId: request.targetScheduleId,
+          isPastAbsence: isPastAbsenceMakeup,
+        },
+      );
+
+      independentEntitlementId = validated.entitlementId;
+      independentOriginalUnits = validated.originalUnits;
+    } else {
     const activeMemberships =
       await tx.userMembership.findMany({
         where: {
@@ -900,6 +1266,8 @@ export async function reviewBookingRescheduleRequest(input: {
       fail("DISTINCT_CLASS_REQUIRED");
     }
 
+      targetMembershipId = targetMembership.id;
+    }
     /*
      * Atomic request claim.
      *
@@ -966,6 +1334,12 @@ export async function reviewBookingRescheduleRequest(input: {
       const historicalBookingStillValid =
         await tx.booking.findFirst({
           where: {
+            ...(independentEntitlementId
+              ? {
+                  userMembershipId: null,
+                  offerBoxEntitlementId: independentEntitlementId,
+                }
+              : {}),
             id: request.booking.id,
             userId: request.booking.userId,
             scheduleId:
@@ -992,6 +1366,13 @@ export async function reviewBookingRescheduleRequest(input: {
         const markedNoShow =
           await tx.booking.updateMany({
             where: {
+                ...(independentEntitlementId
+                  ? {
+                      userMembershipId: null,
+                      offerBoxEntitlementId: independentEntitlementId,
+                      scheduleId: request.booking.scheduleId,
+                    }
+                  : {}),
               id:
                 historicalBookingStillValid.id,
               status: "confirmed",
@@ -1012,8 +1393,13 @@ export async function reviewBookingRescheduleRequest(input: {
             userId: request.booking.userId,
             scheduleId:
               request.targetScheduleId,
-            userMembershipId:
-              targetMembership.id,
+            userMembershipId: targetMembershipId,
+            ...(independentEntitlementId
+              ? {
+                  offerBoxEntitlementId: independentEntitlementId,
+                  entitlementUnits: independentOriginalUnits,
+                }
+              : {}),
             status: "confirmed",
 
             /*
@@ -1042,6 +1428,12 @@ export async function reviewBookingRescheduleRequest(input: {
       const movedBooking =
         await tx.booking.updateMany({
           where: {
+            ...(independentEntitlementId
+              ? {
+                  userMembershipId: null,
+                  offerBoxEntitlementId: independentEntitlementId,
+                }
+              : {}),
             id: request.booking.id,
             status: "confirmed",
             scheduleId:
@@ -1050,8 +1442,10 @@ export async function reviewBookingRescheduleRequest(input: {
           data: {
             scheduleId:
               request.targetScheduleId,
-            userMembershipId:
-              targetMembership.id,
+            userMembershipId: targetMembershipId,
+            ...(independentEntitlementId
+              ? { offerBoxEntitlementId: independentEntitlementId }
+              : {}),
           },
         });
 
@@ -1098,6 +1492,238 @@ export async function reviewBookingRescheduleRequest(input: {
       requestId: request.id,
       scheduleId:
         request.targetScheduleId,
+    };
+  });
+}
+
+/**
+ * Explicit administrative action on an independent Offer Box booking.
+ * Never creates a membership, payment, sale or commission.
+ */
+export async function applyIndependentOfferAdminBookingAction(
+  input: {
+    bookingId: string;
+    action: "confirm" | "reschedule";
+    targetScheduleId?: string;
+    reviewedByUserId: string;
+  },
+) {
+  const initial = await db.booking.findUnique({
+    where: { id: input.bookingId },
+    select: {
+      id: true,
+      userId: true,
+      scheduleId: true,
+      offerBoxEntitlementId: true,
+      userMembershipId: true,
+    },
+  });
+
+  if (!initial) fail("BOOKING_NOT_FOUND");
+
+  if (
+    !initial.offerBoxEntitlementId ||
+    initial.userMembershipId !== null
+  ) {
+    fail("BOOKING_NOT_ELIGIBLE");
+  }
+
+  const entitlementId = initial.offerBoxEntitlementId;
+  const restore = input.action === "confirm";
+
+  const targetId = restore
+    ? initial.scheduleId
+    : input.targetScheduleId;
+
+  if (!targetId) fail("TARGET_NOT_FOUND");
+
+  return db.$transaction(async (tx) => {
+    await lockMembershipLifecycleUserTx(
+      asDbTransactionClient(tx),
+      initial.userId,
+    );
+
+    await tx.$queryRaw`
+      SELECT id FROM OfferBoxEntitlement
+      WHERE id = ${entitlementId}
+      FOR UPDATE
+    `;
+
+    const scheduleIds = [
+      ...new Set([initial.scheduleId, targetId]),
+    ].sort();
+
+    for (const scheduleId of scheduleIds) {
+      await tx.$queryRaw`
+        SELECT id FROM Schedule
+        WHERE id = ${scheduleId}
+        FOR UPDATE
+      `;
+    }
+
+    await tx.$queryRaw`
+      SELECT id FROM Booking
+      WHERE id = ${initial.id}
+      FOR UPDATE
+    `;
+
+    const booking = await tx.booking.findUnique({
+      where: { id: initial.id },
+      include: {
+        schedule: { include: { class: true } },
+        classExchange: { select: { id: true } },
+      },
+    });
+
+    if (!booking) fail("BOOKING_NOT_FOUND");
+
+    if (
+      booking.userId !== initial.userId ||
+      booking.scheduleId !== initial.scheduleId ||
+      booking.offerBoxEntitlementId !== entitlementId ||
+      booking.userMembershipId !== null ||
+      booking.classExchange
+    ) {
+      fail("BOOKING_CHANGED");
+    }
+
+    if (restore && booking.status === "confirmed") {
+      return {
+        success: true as const,
+        alreadyConfirmed: true as const,
+      };
+    }
+
+    if (
+      !restore &&
+      booking.status === "confirmed" &&
+      booking.scheduleId === targetId
+    ) {
+      return {
+        success: true as const,
+        alreadySameSchedule: true as const,
+      };
+    }
+
+    if (
+      restore
+        ? booking.status !== "cancelled"
+        : booking.status !== "confirmed"
+    ) {
+      fail("BOOKING_NOT_ELIGIBLE");
+    }
+
+    const target = await tx.schedule.findUnique({
+      where: { id: targetId },
+      include: { class: true },
+    });
+
+    if (!target) fail("TARGET_NOT_FOUND");
+
+    // Preserve the existing direct admin reschedule policy.
+    // Cross-class customer requests remain a separate workflow.
+    if (target.classId !== booking.schedule.classId) {
+      fail("CLASS_NOT_INCLUDED");
+    }
+
+    if (!restore) {
+      const oldSlot = scheduleSlotInstant(
+        booking.schedule.date,
+        booking.schedule.time,
+      );
+
+      if (
+        !Number.isFinite(oldSlot.getTime()) ||
+        oldSlot.getTime() <= Date.now()
+      ) {
+        fail("CURRENT_SLOT_PASSED");
+      }
+    }
+
+    await validateIndependentOfferReplacement(
+      asDbTransactionClient(tx),
+      {
+        userId: booking.userId,
+        bookingId: booking.id,
+        entitlementId,
+        targetScheduleId: targetId,
+        isPastAbsence: false,
+        restoreCancelled: restore,
+      },
+    );
+
+    const seat = await tx.schedule.updateMany({
+      where: {
+        id: targetId,
+        isActive: true,
+        availableSpots: { gt: 0 },
+      },
+      data: {
+        availableSpots: { decrement: 1 },
+      },
+    });
+
+    if (seat.count !== 1) fail("TARGET_FULL");
+
+    const claimed = await tx.booking.updateMany({
+      where: {
+        id: booking.id,
+        userId: booking.userId,
+        offerBoxEntitlementId: entitlementId,
+        userMembershipId: null,
+        scheduleId: booking.scheduleId,
+        status: restore ? "cancelled" : "confirmed",
+      },
+      data: {
+        status: "confirmed",
+        scheduleId: targetId,
+      },
+    });
+
+    if (claimed.count !== 1) fail("BOOKING_CHANGED");
+
+    if (!restore) {
+      await tx.schedule.update({
+        where: { id: booking.scheduleId },
+        data: {
+          availableSpots: { increment: 1 },
+        },
+      });
+    }
+
+    // A direct admin action supersedes pending requests
+    // for this exact booking. Do not leave stale approvals.
+    await tx.bookingRescheduleRequest.updateMany({
+      where: {
+        bookingId: booking.id,
+        status: "pending",
+      },
+      data: {
+        status: "cancelled",
+        pendingKey: null,
+        reviewedAt: new Date(),
+        reviewedByUserId: input.reviewedByUserId,
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId: booking.userId,
+        title: restore
+          ? `تمت إعادة تفعيل حجز ${target.class.name}`
+          : `تم تغيير موعد ${target.class.name}`,
+        body: restore
+          ? "تمت إعادة تفعيل الحجز من حقوق العرض المستقل."
+          : `تم تعديل موعد حجز العرض إلى ${target.time} بتاريخ ${target.date.toLocaleDateString("ar-EG")}.`,
+        type: "success",
+      },
+    });
+
+    return {
+      success: true as const,
+      bookingId: booking.id,
+      offerBoxEntitlementId: entitlementId,
+      scheduleId: targetId,
     };
   });
 }

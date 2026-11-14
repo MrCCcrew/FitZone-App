@@ -1,3 +1,24 @@
+{
+  const r15zaqRaw = process.env.DATABASE_URL;
+  if (!r15zaqRaw ||
+      process.env.DIRECT_URL !== r15zaqRaw ||
+      process.env.TEST_DATABASE_URL !== r15zaqRaw ||
+      process.env.APP_ENV !== "test" ||
+      process.env.NODE_ENV !== "test" ||
+      process.env.FITZONE_R13_ISOLATED_INTEGRATION !== "1") {
+    throw new Error("R15ZAQ_R13_ENVIRONMENT_REJECTED");
+  }
+  const r15zaqTarget = new URL(r15zaqRaw);
+  if (
+    r15zaqTarget.protocol !== "mysql:" ||
+    r15zaqTarget.hostname !== "127.0.0.1" ||
+    r15zaqTarget.port !== "3306" ||
+    decodeURIComponent(r15zaqTarget.username) !== "fitzone_r13_user" ||
+    r15zaqTarget.pathname !== "/fitzone_final_release_r13_test"
+  ) {
+    throw new Error("R15ZAQ_R13_DATABASE_IDENTITY_REJECTED");
+  }
+}
 import {
   afterAll,
   beforeAll,
@@ -25,8 +46,8 @@ if (
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !==
-    "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+    "fitzone_r13_user" ||
+  url.pathname !== "/fitzone_final_release_r13_test"
 ) {
   throw new Error(
     "REFUSING: Offer Box redeem integration requires fitzone_test",

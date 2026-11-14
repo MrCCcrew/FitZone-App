@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import PagesContent from "./sections/PagesContent";
 import BlogPending from "./sections/BlogPending";
 import ChatKnowledge from "./sections/ChatKnowledge";
 import Subscriptions from "./sections/Subscriptions";
+import PinkFridayPopupAdmin from "./sections/PinkFridayPopupAdmin";
 import FriendMatching from "./sections/FriendMatching";
 import Packages from "./sections/Packages";
 import Goals from "./sections/Goals";
@@ -66,6 +67,7 @@ const STORE_SECTIONS: Section[] = [
 ];
 const GYM_SECTIONS: Section[] = [
   "subscriptions",
+  "pink-friday-popup",
   "friend-matching",
   "packages",
   "goals",
@@ -86,6 +88,7 @@ const NAV: { id: Section; label: string; icon: string }[] = [
   { id: "blog-pending", label: "طلبات نشر المدونة", icon: "📝" },
   { id: "knowledge", label: "قاعدة معرفة البوت", icon: "KB" },
   { id: "subscriptions", label: "الاشتراكات والعروض", icon: "🎟️" },
+  { id: "pink-friday-popup", label: "إدارة البوب اب", icon: "💗" },
   { id: "friend-matching", label: "طلبات عرض الصحاب", icon: "👭" },
   { id: "packages", label: "الباقات", icon: "🎁" },
   { id: "goals", label: "الأهداف", icon: "🎯" },
@@ -144,6 +147,7 @@ const TITLES: Record<string, string> = {
   "blog-pending": "طلبات نشر المقالات",
   knowledge: "قاعدة معرفة البوت",
   subscriptions: "إدارة الاشتراكات والعروض",
+  "pink-friday-popup": "إدارة Pink Friday Pop-up",
   "friend-matching": "طلبات عرض الصحاب",
   packages: "إدارة الباقات",
   goals: "إدارة الأهداف",
@@ -185,6 +189,7 @@ const SECTIONS: Record<string, ComponentType> = {
   "blog-pending": BlogPending,
   knowledge: ChatKnowledge,
   subscriptions: Subscriptions,
+  "pink-friday-popup": PinkFridayPopupAdmin,
   "friend-matching": FriendMatching,
   packages: Packages,
   goals: Goals,

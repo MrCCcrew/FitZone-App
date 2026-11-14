@@ -111,6 +111,11 @@ export async function GET() {
                   status: true,
                 },
               },
+              individualInvites: {
+                where: { status: "pending", expiresAt: { gt: new Date() } },
+                orderBy: { createdAt: "asc" },
+                select: { id: true, createdAt: true, expiresAt: true },
+              },
             },
           },
         },
@@ -252,6 +257,13 @@ export async function GET() {
         group: {
           id: participant.group.id,
           token: participant.group.inviteToken,
+          individualInvitesEnabled: participant.group.individualInvitesEnabled,
+          pendingInvites: participant.role === "creator" ?
+            participant.group.individualInvites.map(invite => ({
+              id: invite.id,
+              createdAt: invite.createdAt.toISOString(),
+              expiresAt: invite.expiresAt.toISOString(),
+            })) : [],
           status: participant.group.status,
           matchingEnabled: participant.group.matchingEnabled,
           requiredMembers:

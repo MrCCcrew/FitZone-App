@@ -11,6 +11,44 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+
+function r15zAllowedHrDatabase(dbName: string | undefined | null): boolean {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return false;
+
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1"
+  ) return false;
+
+  const r13 =
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1";
+
+  if (r13) {
+    return (
+      u.port === "3306" &&
+      u.pathname === "/fitzone_final_release_r13_test" &&
+      decodeURIComponent(u.username) === "fitzone_r13_user" &&
+      dbName === "fitzone_final_release_r13_test"
+    );
+  }
+
+  return (
+    u.pathname === "/fitzone_test" &&
+    decodeURIComponent(u.username) === "fitzone_test_user" &&
+    dbName === "fitzone_test"
+  );
+}
+
 beforeAll(async () => {
   dbA = new PrismaClient();
   dbB = new PrismaClient();
@@ -21,7 +59,7 @@ beforeAll(async () => {
 
   if (
     process.env.APP_ENV !== "test" ||
-    current[0]?.db !== "fitzone_test"
+    !r15zAllowedHrDatabase(current[0]?.db)
   ) {
     throw new Error("REFUSING_NON_TEST_DB");
   }

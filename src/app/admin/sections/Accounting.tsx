@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
@@ -32,6 +32,12 @@ interface StoreSummary {
 interface ClubSummary {
   membershipRevenue: number;
   bookingRevenue: number;
+  offerBoxCollected?: number;
+  offerBoxRevenue?: number;
+  offerBoxCollectionCount?: number;
+  offerBoxRevenueCount?: number;
+  offerBoxUnverifiedCount?: number;
+  offerBoxJournalReviewCount?: number;
   totalRevenue: number;
   walletTopupCollected: number;
   walletTopupCount: number;
@@ -1651,6 +1657,29 @@ function ClubTab({
         />
       </div>
 
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <KpiCard
+          label="تحصيل بوكس العروض"
+          value={`${fmt(s.offerBoxCollected ?? 0)} ج`}
+          sub={`${s.offerBoxCollectionCount ?? 0} عملية دفع مؤكدة`}
+        />
+        <KpiCard
+          label="إيرادات بوكس العروض المعترف بها"
+          value={`${fmt(s.offerBoxRevenue ?? 0)} ج`}
+          sub={`${s.offerBoxRevenueCount ?? 0} قيد تفعيل`}
+        />
+      </div>
+
+      {(
+        (s.offerBoxUnverifiedCount ?? 0) > 0 ||
+        (s.offerBoxJournalReviewCount ?? 0) > 0
+      ) && (
+        <div className="rounded-xl border border-amber-500/30 p-3 text-sm text-amber-300">
+          بوكس العروض: {s.offerBoxUnverifiedCount ?? 0} عملية تحتاج مراجعة تحصيل،
+          {" "}{s.offerBoxJournalReviewCount ?? 0} قيد يحتاج مراجعة محاسبية.
+        </div>
+      )}
+
       {/* Wallet Topup — deferred liability */}
       <div className="rounded-2xl border border-yellow-500/30 bg-yellow-950/20 p-4">
         <div className="flex items-start justify-between gap-4">
@@ -3192,6 +3221,16 @@ type CustomerRow = {
   totalPaid: number;
   totalMembershipPaid: number;
   totalBookingPaid: number;
+  totalOfferBoxPaid?: number;
+  unverifiedOfferBoxCount?: number;
+  offerBoxPurchases?: Array<{
+    id: string;
+    offerTitle: string;
+    status: string;
+    confirmedPaidAmount: number;
+    needsFinancialReview: boolean;
+    paidAt: string | null;
+  }>;
   unverifiedMembershipCount: number;
   totalDiscounts: number;
   membershipsCount: number;
@@ -3440,7 +3479,23 @@ function CustomerStatementTab({ from, to }: { from: string; to: string }) {
                         </div>
                         <div className="text-xs text-[#d7aabd]">
                           {row.membershipsCount} سجل اشتراك
+                          {(row.offerBoxPurchases?.length ?? 0) > 0 && (
+                            <span className="block text-xs text-pink-200">
+                              بوكس العروض: {(row.totalOfferBoxPaid ?? 0).toFixed(2)} ج
+                              {" "}({row.offerBoxPurchases?.length ?? 0} شراء)
+                            </span>
+                          )}
                         </div>
+                        {(row.offerBoxPurchases ?? []).map((purchase) => (
+                          <div key={purchase.id} className="mt-1 text-xs text-[#d7aabd]">
+                            {purchase.offerTitle}: {purchase.confirmedPaidAmount.toFixed(2)} ج
+                            {purchase.needsFinancialReview && (
+                              <span className="block text-amber-300">
+                                يحتاج مراجعة تحصيل
+                              </span>
+                            )}
+                          </div>
+                        ))}
                         {row.unverifiedMembershipCount > 0 && (
                           <div className="mt-1 text-xs text-amber-300">
                             {row.unverifiedMembershipCount} سجل يحتاج مراجعة تحصيل

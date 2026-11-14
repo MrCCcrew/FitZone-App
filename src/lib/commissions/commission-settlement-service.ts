@@ -10,6 +10,7 @@ export const COMMISSION_TYPES = [
   "trainer",
   "nutrition",
   "marketing",
+  "friend_offer",
 ] as const;
 
 export type CommissionType = (typeof COMMISSION_TYPES)[number];
@@ -102,6 +103,11 @@ const CONFIG: Record<CommissionType, SettlementConfig> = {
    * Marketing closing commission is independent from Staff referral
    * commission, but uses the same authoritative payout boundary.
    */
+  friend_offer: {
+    table: "FriendOfferCommission",
+    openStatus: "earned",
+    beneficiaryColumn: "beneficiaryId",
+  },
   marketing: {
     table: "MarketingCommission",
     openStatus: "earned",
@@ -466,6 +472,12 @@ async function closeCommissionRows(
           status: "settled",
           settledAt,
         },
+      });
+
+    case "friend_offer":
+      return tx.friendOfferCommission.updateMany({
+        where: {id: {in: ids}, status: "earned"},
+        data: {status: "settled", settledAt},
       });
 
     case "marketing":

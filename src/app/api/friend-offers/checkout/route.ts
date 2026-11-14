@@ -1,3 +1,4 @@
+import { buildMembershipCommissionSnapshotTx } from "@/lib/commissions/membership-commission-snapshot-builder";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { assessFriendOfferGroupReadiness } from "@/lib/friend-offer-group-readiness";
@@ -700,6 +701,52 @@ export async function POST(req: Request) {
       });
 
       if (reserved.count === 1) {
+        // Freeze each independent right's entire commission policy at checkout
+        // claim time, BEFORE any external Paymob intention is created.
+        if (group.individualInvitesEnabled === true) {
+          const stored = await tx.friendOfferParticipant.findUnique({
+            where: { id: participant.id },
+            select: { independentCommissionSnapshot: true },
+          });
+          if (!stored?.independentCommissionSnapshot) {
+            let source: Record<string, unknown>;
+            try {
+              const parsed: unknown = JSON.parse(attributionSnapshot ?? "{}");
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid");
+              source = parsed as Record<string, unknown>;
+            } catch {
+              throw new Error("FRIEND_INDEPENDENT_COMMISSION_ATTRIBUTION_INVALID");
+            }
+            const field = (name: string) => {
+              const value = source[name];
+              if (value == null) return null;
+              if (typeof value !== "string" || !value.trim()) throw new Error("FRIEND_INDEPENDENT_COMMISSION_ATTRIBUTION_INVALID");
+              return value;
+            };
+            const frozen = await buildMembershipCommissionSnapshotTx(
+              asDbTransactionClient(tx),
+              {
+                partnerId: field("partnerId"),
+                partnerCodeId: field("partnerCodeId"),
+                affiliateLinkId: field("affiliateLinkId"),
+                salesAgentUserId: field("salesAgentUserId"),
+                salesAgentId: field("salesAgentId"),
+                staffReferralLinkId: field("staffReferralLinkId"),
+                trainerReferralLinkId: field("trainerReferralLinkId"),
+                nutritionReferralLinkId: field("nutritionReferralLinkId"),
+                customerUserId: currentUser.id,
+                staffReferralAsOfDate: new Date(),
+                partnerCommissionBase: amount,
+                customerPaidAmount: amount,
+              },
+            );
+            const frozenClaim = await tx.friendOfferParticipant.updateMany({
+              where: {id: participant.id, independentCommissionSnapshot: null, status: "checkout_claiming"},
+              data: {independentCommissionSnapshot: frozen},
+            });
+            if (frozenClaim.count !== 1) throw new Error("FRIEND_INDEPENDENT_COMMISSION_FREEZE_CONFLICT");
+          }
+        }
         await lockMarketingConversionForFriendOfferTx(
           asDbTransactionClient(tx),
           {

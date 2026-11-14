@@ -190,7 +190,7 @@ interface AccountData {
 
 type AttendancePassSummary = {
   id: string;
-  kind: "membership" | "private_session";
+  kind: "membership" | "private_session" | "offer_box";
   label: string;
   code: string;
   payload: string;
@@ -1864,7 +1864,11 @@ function AttendanceQrPanel() {
                 </div>
               </div>
               <span className="rounded-full bg-pink-500/15 px-2.5 py-1 text-[11px] font-bold text-pink-200">
-                {pass.kind === "membership" ? t("اشتراك", "Membership") : t("جلسة خاصة", "Private")}
+                {pass.kind === "membership"
+                  ? t("اشتراك", "Membership")
+                  : pass.kind === "offer_box"
+                    ? t("عرض مستقل", "Independent offer")
+                    : t("جلسة خاصة", "Private")}
               </span>
             </div>
 
@@ -6078,6 +6082,8 @@ type AccountFriendOffer = {
   group: {
     id: string;
     token: string;
+    individualInvitesEnabled: boolean;
+    pendingInvites: Array<{ id: string; createdAt: string; expiresAt: string }>;
     status: string;
     matchingEnabled: boolean;
     requiredMembers: number;
@@ -6194,6 +6200,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const [friendOfferError, setFriendOfferError] = useState<string | null>(null);
   const [friendInviteCopiedId, setFriendInviteCopiedId] =
     useState<string | null>(null);
+  const [friendInviteCancellingId, setFriendInviteCancellingId] = useState<string | null>(null);
   const [friendCarryoverPreviews, setFriendCarryoverPreviews] = useState<
     Record<string, FriendOfferCarryoverPreview | null>
   >({});
@@ -6631,13 +6638,44 @@ export default function AccountClient({ data }: { data: AccountData }) {
     }
   };
 
+  const cancelSingleFriendInvite = async (friendOffer: AccountFriendOffer, invitationId: string) => {
+    if (friendInviteCancellingId) return;
+    if (!window.confirm(t("إلغاء رابط الدعوة ده؟ لن تتمكن صاحبته من استخدامه.",
+                           "Cancel this invitation link? It will stop working."))) return;
+    setFriendInviteCancellingId(invitationId);
+    try {
+      const response = await fetch("/api/me/friend-offers/invitations", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({groupId: friendOffer.group.id, invitationId}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "تعذر إلغاء الرابط.");
+      await loadFriendOffers();
+    } catch(error) {
+      setFriendOfferError(error instanceof Error ? error.message : "تعذر إلغاء الدعوة.");
+    } finally {setFriendInviteCancellingId(null);}
+  };
+
   const copyFriendOfferInvite = async (
     friendOffer: AccountFriendOffer,
   ) => {
     try {
+      let token = friendOffer.group.token;
+      if (friendOffer.group.individualInvitesEnabled) {
+        const response = await fetch("/api/me/friend-offers/invitations", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ groupId: friendOffer.group.id }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.invitation?.token) {
+          throw new Error(payload.error ?? "تعذر إنشاء رابط فردي.");
+        }
+        token = payload.invitation.token;
+        await loadFriendOffers();
+      }
       const url = new URL("/", window.location.origin);
       url.searchParams.set("page", "offers");
-      url.searchParams.set("friendOffer", friendOffer.group.token);
+      url.searchParams.set("friendOffer", token);
 
       await navigator.clipboard.writeText(url.toString());
 
@@ -7293,7 +7331,8 @@ export default function AccountClient({ data }: { data: AccountData }) {
                           </p>
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button
+                            {(!friendOffer.group.individualInvitesEnabled ||
+                              friendOffer.role === "creator") ? <button
                               type="button"
                               onClick={() =>
                                 void copyFriendOfferInvite(friendOffer)
@@ -7302,18 +7341,35 @@ export default function AccountClient({ data }: { data: AccountData }) {
                             >
                               {friendInviteCopiedId === friendOffer.participantId
                                 ? t("تم نسخ رابط الدعوة", "Invite link copied")
-                                : t("نسخ رابط دعوة الصديقات", "Copy friends invitation")}
-                            </button>
+                                : t("إنشاء ونسخ رابط دعوة", "Create and copy invite link")}
+                            </button> : null}
 
-                            <a
+                            {!friendOffer.group.individualInvitesEnabled ? <a
                               href={`/?page=offers&friendOffer=${encodeURIComponent(friendOffer.group.token)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="rounded-lg border border-white/20 px-3 py-2 font-bold text-white"
                             >
                               {t("فتح رابط الدعوة", "Open invitation")}
-                            </a>
+                            </a> : null}
                           </div>
+                          {friendOffer.role === "creator" &&
+                            friendOffer.group.individualInvitesEnabled &&
+                            friendOffer.group.pendingInvites.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {friendOffer.group.pendingInvites.map((invite, index) => (
+                                  <div key={invite.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/15 p-2 text-xs">
+                                    <span>{t(`دعوة معلقة ${index + 1}`, `Pending invitation ${index + 1}`)}</span>
+                                    <button type="button"
+                                      disabled={friendInviteCancellingId !== null}
+                                      onClick={() => void cancelSingleFriendInvite(friendOffer, invite.id)}
+                                      className="rounded-lg border border-red-400/40 px-3 py-1.5 text-red-200 disabled:opacity-50">
+                                      {friendInviteCancellingId === invite.id ? t("جارٍ الإلغاء", "Cancelling") : t("إلغاء الدعوة", "Cancel invitation")}
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                         </div>
                       ) : null}
 

@@ -1,3 +1,4 @@
+import { readDirectCommercialConsideration } from "@/lib/offer-box/direct-commercial-consideration";
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
@@ -117,7 +118,21 @@ export async function GET(req: Request) {
     const rows = await db.offerBoxPurchase.findMany({
       where: {
         userId: user.id,
-        status: { in: ["available", "redeemed"] },
+        OR: [
+          { status: { in: ["available", "redeemed"] } },
+          {
+            commercialKind: {
+              in: ["package", "direct_offer"],
+            },
+            status: {
+              in: [
+                "pending_payment",
+                "paid_activation_pending",
+                "paid_review",
+              ],
+            },
+          },
+        ],
       },
       orderBy: [
         { createdAt: "desc" },
@@ -128,32 +143,268 @@ export async function GET(req: Request) {
       select: {
         id: true,
         userId: true,
+        commercialKind: true,
+        holdExpiresAt: true,
         status: true,
         offerSnapshot: true,
         priceSnapshot: true,
         currency: true,
         paidAt: true,
         redeemedAt: true,
+        redeemedUserMembershipId: true,
         createdAt: true,
       },
     });
 
     const hasMore = rows.length > PAGE_SIZE;
 
+    const visiblePurchaseIds = rows
+      .slice(0, PAGE_SIZE)
+      .filter((item) => item.userId === user.id)
+      .map((item) => item.id);
+
+    const entitlements =
+      await db.offerBoxEntitlement.findMany({
+        where: {
+          userId: user.id,
+          purchaseId: { in: visiblePurchaseIds },
+        },
+        select: {
+          id: true,
+          purchaseId: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          totalSessions: true,
+        },
+      });
+
+    const entitlementIds = entitlements.map(
+      (item) => item.id,
+    );
+
+    /*
+     * Read actual independent bookings only.
+     * Never count bookings belonging to a UserMembership.
+     *
+     * These are descriptive booking totals, not a booking
+     * authorization decision.
+     */
+    const offerBookings = entitlementIds.length
+      ? await db.booking.findMany({
+          where: {
+            userId: user.id,
+            userMembershipId: null,
+            offerBoxEntitlementId: {
+              in: entitlementIds,
+            },
+          },
+          select: {
+            id: true,
+            offerBoxEntitlementId: true,
+            status: true,
+            entitlementUnits: true,
+            isMakeup: true,
+            rescheduleRequests: {
+              where: {
+                requestType: "past_absence_makeup",
+                status: "approved",
+              },
+              select: { id: true },
+              take: 1,
+            },
+            schedule: {
+              select: {
+                id: true,
+                date: true,
+                time: true,
+                class: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: [
+            { schedule: { date: "asc" } },
+            { schedule: { time: "asc" } },
+          ],
+        })
+      : [];
+
+    const entitlementByPurchase = new Map(
+      entitlements.map((item) => [
+        item.purchaseId,
+        item,
+      ]),
+    );
+
+    const bookingsByEntitlement = new Map<
+      string,
+      typeof offerBookings
+    >();
+
+    for (const booking of offerBookings) {
+      if (!booking.offerBoxEntitlementId) {
+        continue;
+      }
+
+      const existing =
+        bookingsByEntitlement.get(
+          booking.offerBoxEntitlementId,
+        ) ?? [];
+
+      existing.push(booking);
+
+      bookingsByEntitlement.set(
+        booking.offerBoxEntitlementId,
+        existing,
+      );
+    }
+
     const items = rows
       .slice(0, PAGE_SIZE)
       .filter((item) => item.userId === user.id)
-      .map((item) => ({
-        purchaseId: item.id,
-        status: item.status,
-        canRedeem: item.status === "available",
-        ...parseSnapshot(item.offerSnapshot),
-        price: item.priceSnapshot,
-        currency: item.currency,
-        paidAt: item.paidAt?.toISOString() ?? null,
-        redeemedAt: item.redeemedAt?.toISOString() ?? null,
-        createdAt: item.createdAt.toISOString(),
-      }));
+      .map((item) => {
+        const entitlement =
+          entitlementByPurchase.get(item.id);
+
+        const isLegacy =
+          item.redeemedUserMembershipId !== null;
+
+        const identityConflict =
+          (isLegacy && entitlement != null) ||
+          (item.status === "available" && entitlement != null) ||
+          (item.status === "redeemed" &&
+            !isLegacy &&
+            entitlement == null);
+
+        const bookings = entitlement
+          ? bookingsByEntitlement.get(entitlement.id) ?? []
+          : [];
+
+        const sumUnits = (
+          statuses: readonly string[],
+        ) =>
+          bookings.reduce((total, booking) => {
+            if (!statuses.includes(booking.status)) {
+              return total;
+            }
+
+            const units =
+              Number(booking.entitlementUnits);
+
+            if (
+              !Number.isSafeInteger(units) ||
+              units < 0
+            ) {
+              throw new Error(
+                "OFFER_BOX_BOOKING_UNITS_INVALID",
+              );
+            }
+
+            return total + units;
+          }, 0);
+
+        const reservedUnits =
+          sumUnits(["confirmed"]);
+
+        const attendedUnits =
+          sumUnits(["attended"]);
+
+        const missedUnits =
+          sumUnits(["noshow"]);
+
+        const compensatedMissedUnits = bookings.reduce(
+          (total, booking) =>
+            booking.status === "noshow" &&
+            booking.rescheduleRequests.length > 0
+              ? total + booking.entitlementUnits
+              : total,
+          0,
+        );
+
+        const allocatedUnits =
+          reservedUnits +
+          attendedUnits +
+          missedUnits -
+          compensatedMissedUnits;
+
+        return {
+          purchaseId: item.id,
+          commercialKind: item.commercialKind,
+          holdExpiresAt:
+            item.holdExpiresAt?.toISOString() ?? null,
+          status: item.status,
+          canRedeem:
+            item.status === "available" &&
+            !identityConflict,
+          ...parseSnapshot(item.offerSnapshot),
+          price: (() => { try { const c=readDirectCommercialConsideration(item.offerSnapshot,item.priceSnapshot); return c?c.totalMinor/100:item.priceSnapshot; } catch { return item.priceSnapshot; } })(),
+          externalQuotedAmount: item.priceSnapshot,
+          currency: item.currency,
+          paidAt: item.paidAt?.toISOString() ?? null,
+          redeemedAt: item.redeemedAt?.toISOString() ?? null,
+          createdAt: item.createdAt.toISOString(),
+
+          redemptionType: identityConflict
+            ? "review_required"
+            : isLegacy
+              ? "legacy_membership"
+              : entitlement
+                ? "independent"
+                : null,
+
+          entitlement:
+            entitlement && !identityConflict
+              ? {
+                  id: entitlement.id,
+                  status: entitlement.status,
+                  startDate:
+                    entitlement.startDate.toISOString(),
+                  endDate:
+                    entitlement.endDate.toISOString(),
+                  totalSessions:
+                    entitlement.totalSessions,
+                  reservedUnits,
+                  attendedUnits,
+                  missedUnits,
+                  compensatedMissedUnits,
+                  allocatedUnits,
+                  unallocatedUnits:
+                    entitlement.totalSessions === null
+                      ? null
+                      : Math.max(
+                          0,
+                          entitlement.totalSessions -
+                            allocatedUnits,
+                        ),
+
+                  bookings: bookings.map((booking) => ({
+                    id: booking.id,
+                    status:
+                      booking.status === "confirmed" &&
+                      entitlement.status === "pending_payment"
+                        ? "pending_payment"
+                        : booking.status,
+                    isMakeup: booking.isMakeup,
+                    compensated:
+                      booking.status === "noshow" &&
+                      booking.rescheduleRequests.length > 0,
+                    entitlementUnits:
+                      booking.entitlementUnits,
+                    scheduleId: booking.schedule.id,
+                    date:
+                      booking.schedule.date.toISOString(),
+                    time: booking.schedule.time,
+                    className:
+                      booking.schedule.class.name,
+                  })),
+                }
+              : null,
+        };
+      });
 
     return NextResponse.json(
       {

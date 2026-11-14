@@ -52,6 +52,7 @@ const ALLOWED_FOLDERS = new Set([
   "partners",
   "employees",
   "general",
+  "popup",
 ]);
 
 function getExtension(fileName: string, mimeType: string) {
@@ -124,6 +125,13 @@ export async function POST(req: Request) {
     const file = formData.get("file");
     const folder = normalizeFolder(formData.get("folder"));
 
+    if (folder === "popup" && adminSession.role !== "admin") {
+      return NextResponse.json(
+        { error: "صلاحية إدارة البوب اب مطلوبة." },
+        { status: 403 },
+      );
+    }
+
     if (!(file instanceof File)) {
       return NextResponse.json(
         { error: "لم يتم اختيار ملف للرفع." },
@@ -148,6 +156,21 @@ export async function POST(req: Request) {
       );
     }
 
+if (folder === "popup") {
+      const popupImageTypes = new Set([
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/avif",
+      ]);
+
+      if (!popupImageTypes.has(file.type) || file.size > 5 * 1024 * 1024) {
+        return NextResponse.json(
+          { error: "صورة البوب اب يجب أن تكون JPG أو PNG أو WebP أو AVIF وبحجم لا يتجاوز 5 ميجابايت." },
+          { status: 400 },
+        );
+      }
+    }
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: "حجم الملف كبير جدًا. الحد الأقصى المسموح هو 100 ميجابايت." },

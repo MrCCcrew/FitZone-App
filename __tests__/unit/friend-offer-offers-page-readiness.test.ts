@@ -68,9 +68,12 @@ describe("Friends Offer main page readiness", () => {
     );
 
     expect(source).toContain(
-      "friendInviteUrl(friendGroup.token)",
+      "friendInviteUrl(friendGroup.individualInvitesEnabled",
     );
 
+    expect(source).toContain(
+      'fetch("/api/me/friend-offers/invitations"',
+    );
     expect(source).toContain(
       'action: "join"',
     );

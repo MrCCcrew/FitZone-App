@@ -1,4 +1,5 @@
 "use client";
+import PinkFridayPopup, { type PinkFridayOffer } from "@/components/PinkFridayPopup";
 import { createPortal as createStudentOfferPortal } from "react-dom";
 import {
   useCallback,
@@ -2995,6 +2996,7 @@ type PublicOffer = {
 type FriendOfferGroupView = {
   id: string;
   token: string;
+  individualInvitesEnabled: boolean;
   status: string;
   expiresAt: string;
   requiredMembers: number;
@@ -5106,6 +5108,61 @@ const HomePage = ({
     offerBoxAgeDialog,
     offerBoxAgeDialogId,
   } = useOfferBoxCheckout(summary);
+  useEffect(() => {
+    const handlePinkFridaySelection = (event: Event) => {
+      const selected = (event as CustomEvent<PinkFridayOffer>).detail;
+
+      if (!selected?.offerId) return;
+
+      if (selected.kind === "friend_offer") {
+        window.sessionStorage.setItem(
+          "fitzone_friend_offer_pending",
+          JSON.stringify({
+            kind: "open",
+            offerId: selected.offerId,
+          }),
+        );
+        navigate("offers");
+        return;
+      }
+
+      if (selected.kind === "offer_box") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("offerBox", selected.offerId);
+        window.history.replaceState(
+          window.history.state,
+          "",
+          url.toString(),
+        );
+        navigate("offers");
+        return;
+      }
+
+      if (
+        selected.kind === "membership_offer" &&
+        selected.membershipId
+      ) {
+        startMembershipFlow(
+          selected.membershipId,
+          "offer",
+          selected.offerId,
+          selected.pricingSource.specialPrice,
+        );
+      }
+    };
+
+    window.addEventListener(
+      "fitzone-pink-friday-offer-selected",
+      handlePinkFridaySelection,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "fitzone-pink-friday-offer-selected",
+        handlePinkFridaySelection,
+      );
+    };
+  }, [navigate]);
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
     const onVisible = () => {
@@ -12025,7 +12082,15 @@ const MembershipsPage = ({
     setSubMsg(null);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
+    // Preserve one attempt across network timeout/retry; clear only on a successful response.
+    const attemptKey = "fitzone:commercial-attempt:" + (plan.offerId ?? plan.id ?? "unknown");
+    let commercialAttemptId: string | null = null;
     try {
+      commercialAttemptId = sessionStorage.getItem(attemptKey);
+      if (!commercialAttemptId && typeof crypto?.randomUUID === "function") {
+        commercialAttemptId = crypto.randomUUID();
+        sessionStorage.setItem(attemptKey, commercialAttemptId);
+      }
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -12040,6 +12105,7 @@ const MembershipsPage = ({
             );
             return {
               membershipId: plan.id,
+              commercialAttemptId,
               scheduleIds,
               paymentMethod: paymentOverride ?? membershipPayMethod,
               discountCode: discountResult
@@ -12134,6 +12200,7 @@ const MembershipsPage = ({
         }
         return;
       }
+      sessionStorage.removeItem(attemptKey);
       sessionStorage.removeItem("fitzone:member-benefit-code");
       sessionStorage.removeItem("fitzone:partner-code");
       localStorage.removeItem("fitzone:affiliate-ref");
@@ -16602,6 +16669,9 @@ const OffersPage = ({
   const [friendBusy, setFriendBusy] = useState(false);
   const [friendError, setFriendError] = useState("");
   const [friendCopied, setFriendCopied] = useState(false);
+  const [friendIndividualLink, setFriendIndividualLink] = useState<{
+    id: string; token: string
+  } | null>(null);
   const [friendStudentNationalId, setFriendStudentNationalId] =
     useState("");
   const [friendCarryoverPreview, setFriendCarryoverPreview] =
@@ -16626,8 +16696,35 @@ const OffersPage = ({
   };
 
 
+  const issueSingleFriendInvite = async (groupId: string) => {
+    const response = await fetch("/api/me/friend-offers/invitations", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.invitation?.token) {
+      throw new Error(payload.error ?? "تعذر إنشاء رابط الدعوة.");
+    }
+    const result = payload.invitation as { id: string; token: string };
+    setFriendIndividualLink(result);
+    return result;
+  };
+
+  const cancelSingleFriendInvite = async (groupId: string) => {
+    if (!friendIndividualLink) return;
+    if (!window.confirm(t("إلغاء رابط الدعوة المعلقة؟", "Cancel this pending invitation?"))) return;
+    const response = await fetch("/api/me/friend-offers/invitations", {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId, invitationId: friendIndividualLink.id }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? "تعذر إلغاء الدعوة.");
+    setFriendIndividualLink(null);
+    setFriendCopied(false);
+  };
+
   const friendInviteUrl = (token: string) => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined" || !token) return "";
 
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set("page", "offers");
@@ -16660,6 +16757,7 @@ const OffersPage = ({
     setFriendGroup(null);
     setFriendError("");
     setFriendCopied(false);
+    setFriendIndividualLink(null);
     setFriendStudentNationalId("");
     setFriendCarryoverPreview(null);
     setFriendCarryoverPreviewToken(null);
@@ -16739,6 +16837,7 @@ const OffersPage = ({
       }
 
       setFriendGroup(data.group);
+      setFriendIndividualLink(null);
       setFriendStudentNationalId("");
       const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
       if (saved) {
@@ -16838,6 +16937,7 @@ const OffersPage = ({
       }
 
       setFriendGroup(group);
+      setFriendIndividualLink(null);
       if (group.currentParticipant) {
         const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
         if (saved) {
@@ -17533,7 +17633,8 @@ const OffersPage = ({
 
                     <input
                       readOnly
-                      value={friendInviteUrl(friendGroup.token)}
+                      value={friendInviteUrl(friendGroup.individualInvitesEnabled
+                        ? (friendIndividualLink?.token ?? "") : friendGroup.token)}
                       onFocus={(event) => event.currentTarget.select()}
                       style={{
                         width: "100%",
@@ -17558,9 +17659,10 @@ const OffersPage = ({
                         type="button"
                         onClick={async () => {
                           try {
-                            await navigator.clipboard.writeText(
-                              friendInviteUrl(friendGroup.token),
-                            );
+                            const link = friendGroup.individualInvitesEnabled
+                              ? (friendIndividualLink ?? await issueSingleFriendInvite(friendGroup.id))
+                              : { token: friendGroup.token };
+                            await navigator.clipboard.writeText(friendInviteUrl(link.token));
                             setFriendCopied(true);
                           } catch {
                             setFriendError(
@@ -17588,12 +17690,16 @@ const OffersPage = ({
 
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          try {
+                            const link = friendGroup.individualInvitesEnabled
+                              ? (friendIndividualLink ?? await issueSingleFriendInvite(friendGroup.id))
+                              : {token: friendGroup.token};
                           const message = t(
                             `انضمي معايا في ${friendOffer.title} على FitZone 👭
-${friendInviteUrl(friendGroup.token)}`,
+${friendInviteUrl(link.token)}`,
                             `Join me in ${friendOffer.title} at FitZone 👭
-${friendInviteUrl(friendGroup.token)}`,
+${friendInviteUrl(link.token)}`,
                           );
 
                           window.open(
@@ -17601,6 +17707,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                             "_blank",
                             "noopener,noreferrer",
                           );
+                          } catch(error) {setFriendError(error instanceof Error ? error.message : "تعذر إنشاء الدعوة.");}
                         }}
                         style={{
                           padding: 10,
@@ -17615,6 +17722,16 @@ ${friendInviteUrl(friendGroup.token)}`,
                         WhatsApp
                       </button>
                     </div>
+                    {friendGroup.individualInvitesEnabled && friendIndividualLink ? (
+                      <button type="button"
+                        onClick={async () => {
+                          try { await cancelSingleFriendInvite(friendGroup.id); }
+                          catch(error) { setFriendError(error instanceof Error ? error.message : "تعذر الإلغاء."); }
+                        }}
+                        style={{ color: "#fda4af", marginBottom: 10, border: "1px solid #be123c", padding: 8, borderRadius: 8 }}>
+                        {t("إلغاء الدعوة الحالية وإتاحة مكان لدعوة أخرى", "Cancel this invitation and invite someone else")}
+                      </button>
+                    ) : null}
                   </>
                 )}
 
@@ -28869,14 +28986,25 @@ export default function App({
 
   const pages = {
     home: (
-      <HomePage
-        navigate={navigate}
-        summary={summary}
-        storeEnabled={storeEnabled}
-        initialHomeData={initialHomeData}
-        diagnosticMounted={authDiagnosticMounted}
-        hydrationDisable={hydrationDisable}
-      />
+      <>
+        <HomePage
+          navigate={navigate}
+          summary={summary}
+          storeEnabled={storeEnabled}
+          initialHomeData={initialHomeData}
+          diagnosticMounted={authDiagnosticMounted}
+          hydrationDisable={hydrationDisable}
+        />
+        <PinkFridayPopup
+          onSelectOffer={(offer) => {
+            window.dispatchEvent(
+              new CustomEvent("fitzone-pink-friday-offer-selected", {
+                detail: offer,
+              }),
+            );
+          }}
+        />
+      </>
     ),
     about: <AboutPage />,
     classes: <ClassesPage navigate={navigate} />,

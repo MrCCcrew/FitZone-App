@@ -12,6 +12,24 @@ export async function GET() {
     where: { userId: currentUser.id },
     include: {
       userMembership: { select: { status: true } },
+      offerBoxEntitlement: {
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      friendOfferEntitlement: {
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
       schedule: { include: { class: { include: { trainer: true } } } },
       rescheduleRequests: {
         where: { status: "pending" },
@@ -37,6 +55,23 @@ export async function GET() {
   // - historical cancelled/attended/noshow bookings remain visible
   //   even after their membership later expires/cancels
   const visibleBookings = bookings.filter((b) => {
+    // Independent friend-offer bookings must remain visible to their owner
+    // without relying on UserMembership or its expiry/activation state.
+    if (b.friendOfferEntitlementId) {
+      return (
+        !b.userMembershipId &&
+        !b.offerBoxEntitlementId &&
+        b.friendOfferEntitlement?.userId === currentUser.id
+      );
+    }
+
+    if (b.offerBoxEntitlementId) {
+      return (
+        !b.userMembershipId &&
+        b.offerBoxEntitlement?.userId === currentUser.id
+      );
+    }
+
     if (!b.userMembershipId) return true;
     if (b.status !== "confirmed") return true;
 
@@ -63,9 +98,25 @@ export async function GET() {
       trainerName: b.schedule.class.trainer.name,
       date: b.schedule.date.toISOString(),
       time: b.schedule.time,
-      status: b.status,
+      status:
+        b.status === "confirmed" &&
+        b.offerBoxEntitlement?.status === "pending_payment"
+          ? "pending_payment"
+          : b.status,
+      isPendingPayment:
+        b.status === "confirmed" &&
+        b.offerBoxEntitlement?.status === "pending_payment",
       type: b.schedule.class.type,
       userMembershipId: b.userMembershipId ?? null,
+      offerBoxEntitlementId: b.offerBoxEntitlementId ?? null,
+      friendOfferEntitlementId: b.friendOfferEntitlementId ?? null,
+      bookingOwnerType: b.friendOfferEntitlementId
+        ? "friend_offer"
+        : b.offerBoxEntitlementId
+          ? "offer_box"
+          : b.userMembershipId
+            ? "membership"
+            : "standalone",
       isMakeup: b.isMakeup,
       makeupReason: b.makeupReason ?? null,
       pendingReschedule: b.rescheduleRequests[0]

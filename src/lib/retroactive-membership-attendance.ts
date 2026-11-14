@@ -223,6 +223,7 @@ export async function listRetroactiveAttendanceCandidates(input: {
             id: true,
             status: true,
             userMembershipId: true,
+            offerBoxEntitlementId: true,
           },
         },
       },
@@ -260,13 +261,15 @@ export async function listRetroactiveAttendanceCandidates(input: {
     const linkedBooking =
       schedule.bookings.find(
         (booking) =>
-          booking.userMembershipId != null,
+          booking.userMembershipId != null ||
+          booking.offerBoxEntitlementId != null,
       );
 
     const standalone =
       schedule.bookings.find(
         (booking) =>
           booking.userMembershipId == null &&
+          booking.offerBoxEntitlementId == null &&
           booking.status === "confirmed",
       );
 
@@ -463,9 +466,10 @@ export async function applyRetroactiveMembershipAttendance(input: {
                 membership.userId,
               scheduleId:
                 schedule.id,
-              userMembershipId: {
-                not: null,
-              },
+              OR: [
+                { userMembershipId: { not: null } },
+                { offerBoxEntitlementId: { not: null } },
+              ],
             },
             select: {
               id: true,
@@ -502,6 +506,7 @@ export async function applyRetroactiveMembershipAttendance(input: {
               id: true,
               scheduleId: true,
               userMembershipId: true,
+              offerBoxEntitlementId: true,
               status: true,
             },
           });
@@ -512,6 +517,8 @@ export async function applyRetroactiveMembershipAttendance(input: {
               booking.scheduleId ===
                 schedule.id &&
               booking.userMembershipId ==
+                null &&
+              booking.offerBoxEntitlementId ==
                 null &&
               booking.status ===
                 "confirmed",
@@ -820,6 +827,8 @@ export async function applyRetroactiveMembershipAttendance(input: {
                 scheduleId:
                   schedule.id,
                 userMembershipId:
+                  null,
+                offerBoxEntitlementId:
                   null,
                 status:
                   "confirmed",

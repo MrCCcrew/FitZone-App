@@ -1,3 +1,4 @@
+import { reconcileDueDirectCommercialHolds } from "@/lib/offer-box/reconcile-direct-commercial-hold";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
@@ -52,6 +53,9 @@ export async function GET(req: Request) {
 
   const now = new Date();
 
+  const directCommercial =
+    await reconcileDueDirectCommercialHolds(now);
+
   /*
    * First materialize/reconcile entitlement.
    *
@@ -87,6 +91,7 @@ export async function GET(req: Request) {
   if (pending.length === 0) {
     return NextResponse.json({
       ok: true,
+      directCommercial,
       found: 0,
       cancelled: 0,
       expiredMemberships: expiration.expired,
@@ -220,7 +225,10 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    ok: failures.length === 0,
+    ok:
+      failures.length === 0 &&
+      directCommercial.failedPurchaseIds.length === 0,
+    directCommercial,
     found: pending.length,
     cancelled,
     paidRecovered,

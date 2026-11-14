@@ -24,6 +24,9 @@ vi.mock("@/lib/db", () => {
       user: {
         findUnique: vi.fn(),
       },
+      membership: {
+        findUnique: vi.fn(),
+      },
       siteContent: {
         findUnique: vi.fn(),
       },
@@ -71,6 +74,8 @@ describe(
         rewardPoints: { points: 50 },
         pendingPartnerRef: null,
       } as never);
+
+      vi.mocked(db.membership.findUnique).mockResolvedValue({ id: "plan-1", kind: "subscription" } as never);
 
       vi.mocked(
         db.siteContent.findUnique,

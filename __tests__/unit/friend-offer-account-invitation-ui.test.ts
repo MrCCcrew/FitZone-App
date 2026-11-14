@@ -13,10 +13,16 @@ describe("Friend offer account invitation wiring", () => {
       'url.searchParams.set("page", "offers")',
     );
     expect(account).toContain(
-      'url.searchParams.set("friendOffer", friendOffer.group.token)',
+      'url.searchParams.set("friendOffer", token)',
     );
     expect(account).toContain(
       'encodeURIComponent(friendOffer.group.token)',
+    );
+    expect(account).toContain(
+      'fetch("/api/me/friend-offers/invitations"',
+    );
+    expect(account).toContain(
+      'token = payload.invitation.token',
     );
   });
 

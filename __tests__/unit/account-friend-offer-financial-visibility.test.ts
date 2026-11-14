@@ -45,6 +45,8 @@ function participation(
     group: {
       id: "group-" + id,
       inviteToken: "AbCdEfGhIjKlMnOpQrStUvWx",
+      individualInvitesEnabled: false,
+      individualInvites: [],
       status: groupStatus,
       expiresAt: new Date(
         Date.now() + (expired ? -3600000 : 3600000),

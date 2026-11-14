@@ -1,3 +1,11 @@
+import { createInternalCommercialPaymentTx, directMoneyMinor, findDirectCommercialCheckoutTx, reserveDirectCommercialEconomicsTx, type DirectCheckoutResult } from "@/lib/offer-box/direct-commercial-economics";
+import { activatePaidDirectCommercialPurchaseTx } from "@/lib/offer-box/direct-commercial-activation";
+import { prepareDirectCommercialCheckoutTx } from "@/lib/offer-box/prepare-direct-commercial-checkout";
+import { createDirectCommercialPaymentTx } from "@/lib/offer-box/create-direct-commercial-payment";
+import { initializeDirectCommercialPayment } from "@/lib/payments/service";
+import { applyOfferBoxBookingPlanTx } from "@/lib/payments/membership-booking-plan";
+import { supersedeOrdinarySubscriptionsTx } from "@/lib/membership-session-carryover";
+import { asDbTransactionClient as asSupersessionTransactionClient } from "@/lib/db";
 import {
   FITZONE_TIMEZONE,
   addCairoCalendarDays,
@@ -93,6 +101,7 @@ import {
 type SubscribePayload = {
   membershipId?: string | null;
   offerId?: string | null;
+  commercialAttemptId?: string | null;
   egyptianNationalId?: string | null;
   scheduleIds?: string[] | null;
   paymentMethod?: string | null;
@@ -130,6 +139,16 @@ function parseJsonArray<T>(value: string | null): T[] {
   }
 }
 
+async function respondDirectCommercialCheckout(userId:string,result:DirectCheckoutResult) {
+  try {
+    const payment = result.completedTransactionId ? null : await initializeDirectCommercialPayment({userId,purchaseId:result.purchaseId});
+    return NextResponse.json({success:true,commercialCheckout:true,purchaseId:result.purchaseId,subscriptionId:null,endDate:result.endDate.toISOString(),transactionId:result.completedTransactionId ?? payment?.id ?? null,checkoutUrl:payment?.checkoutUrl ?? null,resumedPending:result.resumedPending,activated:result.completedTransactionId !== null});
+  } catch (error) {
+    console.error("[DIRECT_COMMERCIAL_CHECKOUT_INIT]",result.purchaseId,error instanceof Error?error.message:"unknown");
+    return NextResponse.json({error:"تعذر تأكيد جلسة الدفع الحالية. يرجى التحقق من العملية السابقة قبل بدء دفع جديد.",code:"DIRECT_COMMERCIAL_RECONCILIATION_REQUIRED",purchaseId:result.purchaseId},{status:409});
+  }
+}
+
 export async function POST(req: Request) {
   const user = await getCurrentAppUser();
   const userId = user?.id;
@@ -144,6 +163,7 @@ export async function POST(req: Request) {
   const {
     membershipId,
     offerId,
+    commercialAttemptId,
     egyptianNationalId,
     scheduleIds,
     paymentMethod,
@@ -476,6 +496,29 @@ export async function POST(req: Request) {
       resumedPending: true,
       renewedPaymobIntention: true,
     });
+  }
+
+  const directCommercialCheckoutEnabled =
+    process.env.NODE_ENV === "test" &&
+    process.env.FITZONE_TEST_DIRECT_COMMERCIAL_CHECKOUT === "1";
+  const directAttemptId = typeof commercialAttemptId === "string" && /^[A-Za-z0-9_-]{16,100}$/.test(commercialAttemptId) ? commercialAttemptId : null;
+  // Resume the same purchase BEFORE wallet balance / one-time code validation.
+  // A legitimate retry may already have reserved these funds and the code.
+  if (directCommercialCheckoutEnabled) {
+    const catalog = !offerId && membershipId && membershipId !== "trial-class"
+      ? await db.membership.findUnique({where:{id:membershipId},select:{kind:true}}) : null;
+    if (offerId || catalog?.kind === "package") {
+      try {
+        const existing = await db.$transaction(tx => findDirectCommercialCheckoutTx(asDbTransactionClient(tx), {
+          userId, kind: offerId ? "direct_offer" : "package", offerId: offerId ?? null,
+          catalogMembershipId: membershipId ?? null, fingerprint: subscribeAttemptFingerprint, attemptId: directAttemptId,
+        }));
+        if (existing) return respondDirectCommercialCheckout(userId, existing);
+      } catch (error) {
+        console.error("[DIRECT_COMMERCIAL_RESUME]", error instanceof Error ? error.message : "unknown");
+        return NextResponse.json({error:"عملية الشراء السابقة تحتاج مراجعة قبل بدء دفع جديد.",code:"DIRECT_COMMERCIAL_RECONCILIATION_REQUIRED"},{status:409});
+      }
+    }
   }
 
   const rewardCfg = await getRewardSettings();
@@ -1032,6 +1075,12 @@ export async function POST(req: Request) {
 
         resolvedMembershipId = offer.membershipId ?? undefined;
         if (!resolvedMembershipId) {
+          if (directCommercialCheckoutEnabled) {
+            throw new SubscribeError(
+              "DIRECT_OFFER_WITHOUT_CATALOG_REQUIRES_INDEPENDENT_TERMS",
+              "back_to_plan",
+            );
+          }
           const syntheticMarker = `__offer_subscription__:${offer.id}`;
           const existingSynthetic = await tx.membership.findFirst({
             where: { subtitle: syntheticMarker, isActive: false },
@@ -1132,6 +1181,14 @@ export async function POST(req: Request) {
         }
       }
 
+      const isDirectCommercial = directCommercialCheckoutEnabled && Boolean(offerRecord || plan.kind === "package");
+      if (isDirectCommercial) {
+        const existing = await findDirectCommercialCheckoutTx(asDbTransactionClient(tx), {
+          userId, kind: offerRecord ? "direct_offer" : "package", offerId: offerRecord?.id ?? null,
+          catalogMembershipId: plan.id, fingerprint: subscribeAttemptFingerprint, attemptId: directAttemptId,
+        });
+        if (existing) return existing;
+      }
       walletBonus = plan.walletBonus ?? 0;
       const productRewards = parseJsonArray<{
         productId: string;
@@ -1396,6 +1453,17 @@ export async function POST(req: Request) {
         paymentAmount = Math.max(0, paymentAmount - discountApplied);
       }
 
+      if (isDirectCommercial && (
+        trainerDiscountRecord || staffDiscountRecord || partnerCodeRecord || memberBenefitPartnerRecord ||
+        affiliateLinkRecord || agentRecord || trainerLinkRecord || nutritionLinkRecord
+      )) {
+        throw new SubscribeError("DIRECT_COMMERCIAL_OTHER_COMMISSION_OWNER_NOT_ENABLED", "back_to_plan");
+      }
+      if (isDirectCommercial && await tx.marketingConversion.findFirst({where:{customerId:userId,status:{in:["open","checkout_locked"]}},select:{id:true}})) {
+        throw new SubscribeError("DIRECT_COMMERCIAL_MARKETING_OWNER_NOT_ENABLED", "back_to_plan");
+      }
+      const directTotalBeforeTender = paymentAmount;
+
       // Deduct wallet balance by source.
       // Referral credit is restricted to eligible subscriptions, while
       // general wallet credit keeps its existing unrestricted behavior.
@@ -1431,7 +1499,7 @@ export async function POST(req: Request) {
       const actualReferralWalletDeduct = walletAllocation.referralDeduct;
       const actualGeneralWalletDeduct = walletAllocation.generalDeduct;
 
-      if (actualWalletDeduct > 0) {
+      if (actualWalletDeduct > 0 && !isDirectCommercial) {
         if (!walletForDeduction) {
           throw new SubscribeError("تعذر تحديد رصيد المحفظة.");
         }
@@ -1474,13 +1542,19 @@ export async function POST(req: Request) {
         );
       }
 
+      if (isDirectCommercial) {
+        if (actualReferralWalletDeduct !== 0) throw new SubscribeError("رصيد الإحالة غير صالح لهذا المنتج.");
+        paymentAmount = Math.round((paymentAmount - actualWalletDeduct) * 100) / 100;
+      }
+
       // Deduct reward points
+      const directPointsCount = isDirectCommercial && pointValueEGP > 0 ? Math.min(validatedPointsDeduct, Math.floor((paymentAmount + 1e-9) / pointValueEGP)) : 0;
       const pointsEGP =
-        Math.round(validatedPointsDeduct * pointValueEGP * 100) / 100;
+        Math.round((isDirectCommercial ? directPointsCount : validatedPointsDeduct) * pointValueEGP * 100) / 100;
       const actualPointsEGP = Math.min(pointsEGP, paymentAmount ?? 0);
       const actualPointsDeduct =
-        actualPointsEGP > 0 ? validatedPointsDeduct : 0;
-      if (actualPointsDeduct > 0 && actualPointsEGP > 0) {
+        actualPointsEGP > 0 ? (isDirectCommercial ? directPointsCount : validatedPointsDeduct) : 0;
+      if (actualPointsDeduct > 0 && actualPointsEGP > 0 && !isDirectCommercial) {
         const pointsRecord = await tx.rewardPoints.update({
           where: { userId },
           data: { points: { decrement: actualPointsDeduct } },
@@ -1494,6 +1568,8 @@ export async function POST(req: Request) {
         });
         paymentAmount = Math.max(0, (paymentAmount ?? 0) - actualPointsEGP);
       }
+
+      if (isDirectCommercial) paymentAmount = Math.round((paymentAmount - actualPointsEGP) * 100) / 100;
 
       const membershipPaymentMethod = offerId ? "offer" : resolvedPaymentMethod;
 
@@ -1556,7 +1632,7 @@ export async function POST(req: Request) {
        * re-checks authoritatively after payment to protect against changes
        * between checkout and provider confirmation.
        */
-      if (plan.kind !== "trial") {
+      if (plan.kind !== "trial" && !isDirectCommercial) {
         const carryoverPreflight =
           await previewMembershipSessionCarryoverTx(
             asDbTransactionClient(tx),
@@ -1661,6 +1737,179 @@ export async function POST(req: Request) {
           trainerId: coachMembershipTrainerId ?? null,
           purchaseAt: new Date(),
         });
+
+      /*
+       * Independent commercial checkout.
+       *
+       * Existing subscription checkout remains unchanged.
+       * This branch consumes the same server-resolved prices,
+       * eligibility, dates and commission snapshot.
+       */
+      if (
+        directCommercialCheckoutEnabled &&
+        (offerRecord || plan.kind === "package")
+      ) {
+        if (
+          !plan.isActive ||
+          paymentAmount < 0 ||
+          directTotalBeforeTender <= 0 ||
+          (!needsPaymentConfirmation && !directAttemptId) ||
+          coachMembershipAttribution?.trainerIdSnapshot
+        ) {
+          throw new SubscribeError(
+            "DIRECT_COMMERCIAL_PAYMENT_PATH_NOT_ENABLED",
+            "back_to_plan",
+          );
+        }
+
+        const commercialKind = offerRecord
+          ? "direct_offer" as const
+          : "package" as const;
+
+        const commercialOfferId =
+          offerRecord?.id ?? null;
+
+        const now = new Date();
+
+        const snapshot = {
+          version: 1 as const,
+          purchasedAt: now.toISOString(),
+
+          offer: {
+            id: commercialOfferId,
+            title: offerTitle ?? plan.name,
+            titleEn: offerTitleEn ?? plan.nameEn ?? null,
+          },
+
+          membershipTemplate: {
+            sourceMembershipId: plan.id,
+            name: plan.name,
+            nameEn: plan.nameEn ?? null,
+            kind: plan.kind,
+            durationDays: effectiveDurationDays,
+            sessionsCount: effectiveSessionsCount,
+            walletBonus,
+            productRewards: productRewards.length
+              ? JSON.stringify(productRewards)
+              : null,
+          },
+
+          commercial: {
+            currency: "EGP" as const,
+            originalPrice,
+            finalPrice: paymentAmount,
+          },
+
+          eligibilitySnapshot: purchaseEligibility,
+
+          economics: {
+            commissionSnapshot,
+            attributionMode: "direct_commercial" as const,
+          },
+
+          directConsideration: {
+            version: 1 as const,
+            totalMinor: directMoneyMinor(directTotalBeforeTender),
+            externalMinor: directMoneyMinor(paymentAmount),
+            walletMinor: directMoneyMinor(actualWalletDeduct),
+            pointsMinor: directMoneyMinor(actualPointsEGP),
+            pointsCount: actualPointsDeduct,
+            discount: discountRecord && discountApplied > 0 ? {
+              codeId: discountRecord.id,
+              amountMinor: directMoneyMinor(discountApplied),
+              beforeDiscountMinor: directMoneyMinor(priceAfterMembershipDiscount),
+            } : null,
+          },
+          directCheckoutAttemptId: directAttemptId,
+          ageEligibility: offerAgeEligibilitySnapshot,
+
+          // No raw Egyptian national ID is stored.
+          subscribeAttemptFingerprint,
+        };
+
+        const pending =
+          await prepareDirectCommercialCheckoutTx(
+            asDbTransactionClient(tx),
+            {
+              userId,
+              kind: commercialKind,
+              offerId: commercialOfferId,
+              catalogMembershipId: plan.id,
+              snapshot,
+              startDate: resolvedStart,
+              selectedScheduleIds,
+              serverNow: now,
+            },
+          );
+
+        /*
+         * Create the provisional booking owner.
+         *
+         * The booking engine requires active ownership
+         * while validating and creating its immutable plan.
+         * This temporary state exists only inside this DB
+         * transaction and must never be committed as active.
+         */
+
+        const heldRight =
+          await tx.offerBoxEntitlement.create({
+            data: {
+              purchaseId: pending.purchaseId,
+              userId,
+              status: "active",
+              startDate: pending.startDate,
+              endDate: pending.endDate,
+              totalSessions: effectiveSessionsCount,
+              eligibilitySnapshot,
+              allowedClassTypesSnapshot,
+            },
+          });
+
+        await applyOfferBoxBookingPlanTx({
+          tx,
+          userId,
+          offerBoxEntitlementId: heldRight.id,
+          startDate: heldRight.startDate,
+          endDate: heldRight.endDate,
+          selectedScheduleIds,
+          source: commercialOfferId
+            ? {
+                type: "offer",
+                id: commercialOfferId,
+              }
+            : {
+                type: "package",
+                id: plan.id,
+              },
+          plan: {
+            kind: plan.kind,
+            sessionsCount: effectiveSessionsCount,
+            duration: effectiveDurationDays,
+          },
+        });
+
+        await tx.offerBoxEntitlement.update({
+          where: { id: heldRight.id },
+          data: { status: "pending_payment" },
+        });
+
+        /*
+         * Purchase, booking hold and local payment
+         * are committed together before Paymob I/O.
+         */
+        let completedTransactionId: string | null = null;
+        if (paymentAmount === 0) {
+          completedTransactionId = await createInternalCommercialPaymentTx(asDbTransactionClient(tx),pending.purchaseId,userId,now);
+          await activatePaidDirectCommercialPurchaseTx(tx, {
+            purchaseId:pending.purchaseId, transactionId:completedTransactionId, userId,
+            paymobOrderPaidVerified:false, internalConsideration:true,
+          });
+        } else {
+          const created = await createDirectCommercialPaymentTx(asDbTransactionClient(tx),{userId,purchaseId:pending.purchaseId,serverNow:now});
+          await reserveDirectCommercialEconomicsTx(asDbTransactionClient(tx),pending.purchaseId,created.transactionId);
+        }
+        return {commercialCheckout:true as const,purchaseId:pending.purchaseId,endDate:pending.endDate,resumedPending:false,completedTransactionId};
+      }
 
       const subscription = await tx.userMembership.create({
         data: {
@@ -1941,13 +2190,11 @@ export async function POST(req: Request) {
          * only after the renewed plan booking contract and carryover both
          * completed safely may older active memberships expire.
          */
-        await tx.userMembership.updateMany({
-          where: {
-            userId,
-            status: "active",
-            id: { not: subscription.id },
-          },
-          data: { status: "expired" },
+        await supersedeOrdinarySubscriptionsTx(asSupersessionTransactionClient(tx), {
+          userId,
+          targetMembershipId: subscription.id,
+          targetKind: plan.kind,
+          targetOfferId: offerRecord?.id ?? null,
         });
       }
 
@@ -2081,6 +2328,7 @@ export async function POST(req: Request) {
       });
 
       return {
+        commercialCheckout: false as const,
         subscriptionId: subscription.id,
         planName: plan.name,
         planNameEn: plan.nameEn ?? null,
@@ -2168,6 +2416,8 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+
+  if (result.commercialCheckout) return respondDirectCommercialCheckout(userId, result);
 
   // Unlock pending referral reward when subscription is immediately active
   if (!result.needsPaymentConfirmation) {

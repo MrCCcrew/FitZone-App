@@ -7,7 +7,19 @@ describe("admin analytics filters", () => {
   it("uses a 30-day default range and the project timezone", () => {
     const filters = parseAdminAnalyticsFilters(new URLSearchParams());
     expect(filters.timezone).toBe("Africa/Cairo");
-    expect(filters.to.getTime() - filters.from.getTime()).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000);
+    const dateKey = (instant: Date) => {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: filters.timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(instant);
+      const value = (type: string) =>
+        Number(parts.find((part) => part.type === type)?.value);
+      return Date.UTC(value("year"), value("month") - 1, value("day"));
+    };
+    expect(dateKey(filters.to) - dateKey(filters.from))
+      .toBe(29 * 24 * 60 * 60 * 1000);
   });
 
   it("accepts valid filters and rejects invalid date ranges, timezone, event and entity", () => {

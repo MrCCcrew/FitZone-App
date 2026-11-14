@@ -3,25 +3,59 @@ import { afterEach, describe, expect, it } from "vitest";
 import { db, asDbTransactionClient } from "@/lib/db";
 import { settleCommissionsTx } from "@/lib/commissions/commission-settlement-service";
 
+
+function r15zAllowedHrDatabase(dbName: string | undefined | null): boolean {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return false;
+
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1"
+  ) return false;
+
+  const r13 =
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1";
+
+  if (r13) {
+    return (
+      u.port === "3306" &&
+      u.pathname === "/fitzone_final_release_r13_test" &&
+      decodeURIComponent(u.username) === "fitzone_r13_user" &&
+      dbName === "fitzone_final_release_r13_test"
+    );
+  }
+
+  return (
+    u.pathname === "/fitzone_test" &&
+    decodeURIComponent(u.username) === "fitzone_test_user" &&
+    dbName === "fitzone_test"
+  );
+}
+
 function assertTestDatabase() {
   const raw = process.env.DATABASE_URL;
-
   if (!raw) {
     throw new Error("REFUSING: DATABASE_URL missing");
   }
 
-  const url = new URL(raw);
+  let databaseName: string;
+  try {
+    databaseName = new URL(raw).pathname.slice(1);
+  } catch {
+    throw new Error("REFUSING_NON_ISOLATED_DATABASE");
+  }
 
-  if (
-    process.env.APP_ENV !== "test" ||
-    url.protocol !== "mysql:" ||
-    url.hostname !== "127.0.0.1" ||
-    decodeURIComponent(url.username) !== "fitzone_test_user" ||
-    url.pathname !== "/fitzone_test"
-  ) {
-    throw new Error(
-      "REFUSING: commission settlement integration requires fitzone_test",
-    );
+  if (!r15zAllowedHrDatabase(databaseName)) {
+    throw new Error("REFUSING_NON_ISOLATED_DATABASE");
   }
 }
 

@@ -11,6 +11,69 @@ vi.mock("@/lib/email", async () => {
   };
 });
 
+const paymobProofFixtures = vi.hoisted(
+  () => new Map<string, string>(),
+);
+
+vi.mock("@/lib/payments/registry", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/payments/registry")>();
+
+  return {
+    ...actual,
+    getPaymentProvider: (key: string | null | undefined) => {
+      const provider = actual.getPaymentProvider(key);
+
+      if (key !== "paymob" || !provider) return provider;
+
+      return {
+        ...provider,
+        verifyTransaction: async (
+          transaction: Parameters<typeof provider.verifyTransaction>[0],
+        ) => {
+          const expectedReference =
+            paymobProofFixtures.get(transaction.id);
+
+          const metadata = (() => {
+            try {
+              return JSON.parse(transaction.metadata ?? "{}") as
+                Record<string, unknown>;
+            } catch {
+              return {};
+            }
+          })();
+
+          if (
+            !expectedReference ||
+            transaction.externalReference !== expectedReference ||
+            transaction.amount !== 190 ||
+            transaction.currency !== "EGP" ||
+            metadata.source !== "friend-offer" ||
+            metadata.friendShareAmountMinor !== 19000
+          ) {
+            return {
+              status: "failed" as const,
+              message: "TEST_PROVIDER_PROOF_IDENTITY_REJECTED",
+            };
+          }
+
+          return {
+            status: "paid" as const,
+            message: "Verified isolated test provider fixture",
+            providerReference: transaction.providerReference ?? null,
+            externalReference: expectedReference,
+            payload: {
+              isolatedTestFixture: true,
+              verifiedTransactionId: transaction.id,
+              verifiedAmountMinor: 19000,
+              verifiedCurrency: "EGP",
+            },
+          };
+        },
+      };
+    },
+  };
+});
 import { db } from "@/lib/db";
 import { maybeFinalizeFriendOfferPayment } from "@/lib/payments/friend-offer-finalization";
 import { updatePaymentTransactionStatus } from "@/lib/payments/service";
@@ -25,8 +88,18 @@ describe("Three friends, 190 EGP each, real MySQL", { timeout: 90000 }, () => {
       url.protocol !== "mysql:" ||
       url.hostname !== "127.0.0.1" ||
       url.port !== "3306" ||
-      decodeURIComponent(url.username) !== "fitzone_test_user" ||
-      decodeURIComponent(url.pathname) !== "/fitzone_test"
+      decodeURIComponent(url.username) !==
+        (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1"
+          ? "fitzone_r13_user"
+          : "fitzone_test_user") ||
+      decodeURIComponent(url.pathname) !==
+        (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1"
+          ? "/fitzone_final_release_r13_test"
+          : "/fitzone_test") ||
+      (
+        process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" &&
+        process.env.TEST_DATABASE_URL !== process.env.DATABASE_URL
+      )
     ) {
       throw new Error("UNSAFE_TEST_DATABASE_REFUSED");
     }
@@ -158,6 +231,8 @@ describe("Three friends, 190 EGP each, real MySQL", { timeout: 90000 }, () => {
           },
         });
         paymentIds.push(payment.id);
+        if (!payment.externalReference) throw new Error("TEST_REFERENCE_MISSING");
+        paymobProofFixtures.set(payment.id, payment.externalReference);
 
         await db.friendOfferParticipant.update({
           where: { id: participant.id },

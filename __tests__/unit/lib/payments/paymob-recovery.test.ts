@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
-import { recoverVerifiedPaymobPayment, type VerifiedPaymobRecoveryInput } from "@/lib/payments/service";
+import { recoverVerifiedPaymobPayment, updatePaymentTransactionStatus, type VerifiedPaymobRecoveryInput } from "@/lib/payments/service";
 import * as paymobProvider from "@/lib/payments/providers/paymob";
 
 // Mock Paymob remote verification
@@ -147,6 +147,48 @@ describe("Paymob Payment Recovery", () => {
     await db.user.deleteMany({ where: { id: testUserId } });
   });
 
+  // P0_R195_SUBSCRIPTION_FAILURE_GUARD
+  it.each(["subscription", "membership"] as const)(
+    "preserves the original pending reservation after a failed %s Paymob attempt inside the hold",
+    async (purpose) => {
+      const originalDeadline = new Date(Date.now() + 30 * 60 * 1000);
+
+      await db.paymentTransaction.update({
+        where: { id: testPaymentId },
+        data: {
+          purpose,
+          status: "pending",
+          expiresAt: originalDeadline,
+        },
+      });
+
+      await db.userMembership.update({
+        where: { id: testUserMembershipId },
+        data: {
+          status: "pending_payment",
+          pendingExpiresAt: originalDeadline,
+        },
+      });
+
+      await updatePaymentTransactionStatus(testPaymentId, "failed");
+
+      const payment = await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: testPaymentId },
+      });
+
+      const membership = await db.userMembership.findUniqueOrThrow({
+        where: { id: testUserMembershipId },
+      });
+
+      expect(payment.status).toBe("pending");
+      expect(payment.failedAt).toBeNull();
+      expect(membership.status).toBe("pending_payment");
+      expect(membership.pendingExpiresAt?.getTime()).toBe(
+        originalDeadline.getTime(),
+      );
+    },
+  );
+
   it("rejects recovery without live Paymob Order proof before DB mutation", async () => {
     vi.mocked(
       paymobProvider.confirmPaymobOrderPaidForRecovery,
@@ -173,6 +215,72 @@ describe("Paymob Payment Recovery", () => {
     expect(payment.status).toBe("pending");
     expect(payment.externalReference).toBeNull();
     expect(membership.status).toBe("pending_payment");
+  });
+
+  it("recovers a verified successful Paymob Order after a local failed attempt while membership is pending", async () => {
+    await db.paymentTransaction.update({
+      where: { id: testPaymentId },
+      data: { status: "failed", failedAt: new Date() },
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: testReferenceCode,
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    const result = await recoverVerifiedPaymobPayment(input);
+    expect(result.status).toBe("paid");
+
+    const membership = await db.userMembership.findUniqueOrThrow({
+      where: { id: testUserMembershipId },
+    });
+    expect(membership.status).toBe("active");
+
+    const repeated = await recoverVerifiedPaymobPayment(input);
+    expect(repeated.status).toBe("paid");
+
+    const payments = await db.paymentTransaction.count({
+      where: { membershipId: testUserMembershipId, status: "paid" },
+    });
+    expect(payments).toBe(1);
+  });
+
+  it("does not automatically reopen a failed and cancelled membership without cancellation evidence", async () => {
+    await db.paymentTransaction.update({
+      where: { id: testPaymentId },
+      data: { status: "failed", failedAt: new Date() },
+    });
+
+    await db.userMembership.update({
+      where: { id: testUserMembershipId },
+      data: { status: "cancelled", pendingExpiresAt: null },
+    });
+
+    const input: VerifiedPaymobRecoveryInput = {
+      paymentTransactionId: testPaymentId,
+      paymobTransactionId: "512944958",
+      expectedAmount: 333,
+      expectedCurrency: "EGP",
+      expectedFitZoneReference: testReferenceCode,
+      expectedIntentionId: "pi_live_test_intention_123",
+    };
+
+    await expect(recoverVerifiedPaymobPayment(input))
+      .rejects.toThrow("not recoverable");
+
+    const payment = await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: testPaymentId },
+    });
+    const membership = await db.userMembership.findUniqueOrThrow({
+      where: { id: testUserMembershipId },
+    });
+
+    expect(payment.status).toBe("failed");
+    expect(membership.status).toBe("cancelled");
   });
 
   it("1. successful verified recovery", async () => {

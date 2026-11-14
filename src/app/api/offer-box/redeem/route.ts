@@ -4,37 +4,20 @@ import {
   asDbTransactionClient,
   db,
 } from "@/lib/db";
-import { addCairoCalendarDays } from "@/lib/fitzone-time";
 import {
-  applyMembershipBookingPlanTx,
+  applyOfferBoxBookingPlanTx,
   MembershipBookingPlanError,
 } from "@/lib/payments/membership-booking-plan";
-import {
-  applyMembershipSessionCarryoverTx,
-  isBlockingMembershipCarryoverReason,
-} from "@/lib/membership-session-carryover";
 import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
-import { runPaidMembershipPostActivationReconciliation } from "@/lib/payments/reconciliation-helper";
+import { getPaymentProvider } from "@/lib/payments/registry";
+import { updatePaymentTransactionStatus } from "@/lib/payments/service";
+import { prepareConfirmedOfferBoxActivation } from "@/lib/offer-box/entitlement-contract";
+import { settleIndependentOfferBoxActivationTx } from "@/lib/offer-box/redemption-settlement";
 
 type RedeemBody = {
   purchaseId?: string | null;
   scheduleIds?: string[] | null;
-};
-
-type OfferBoxPurchaseRow = {
-  id: string;
-  userId: string;
-  offerId: string | null;
-  status: string;
-  offerSnapshot: string;
-  snapshotVersion: number;
-  priceSnapshot: number;
-  currency: string;
-  paymentMethod: string | null;
-  paymentTransactionId: string | null;
-  paidAt: Date | null;
-  redeemedAt: Date | null;
-  redeemedUserMembershipId: string | null;
+  confirmed?: boolean;
 };
 
 type FrozenEligibility = {
@@ -192,35 +175,12 @@ function parseSnapshot(raw: string): OfferBoxSnapshot {
   return snapshot as OfferBoxSnapshot;
 }
 
-async function lockPurchase(
-  tx: any,
-  purchaseId: string,
-): Promise<OfferBoxPurchaseRow | null> {
-  const rows =
-    await tx.$queryRaw<OfferBoxPurchaseRow[]>`
-      SELECT
-        id,
-        userId,
-        offerId,
-        status,
-        offerSnapshot,
-        snapshotVersion,
-        priceSnapshot,
-        currency,
-        paymentMethod,
-        paymentTransactionId,
-        paidAt,
-        redeemedAt,
-        redeemedUserMembershipId
-      FROM OfferBoxPurchase
-      WHERE id = ${purchaseId}
-      LIMIT 1
-      FOR UPDATE
-    `;
-
-  return rows[0] ?? null;
-}
-
+/**
+ * Offer Box redemption is independent of the membership lifecycle.
+ *
+ * A purchase already redeemed under the historical membership model
+ * remains historical. New redemptions create exactly one entitlement.
+ */
 export async function POST(req: Request) {
   const user = await getCurrentAppUser();
 
@@ -250,477 +210,349 @@ export async function POST(req: Request) {
       );
     }
 
-    const scheduleIds = [
-      ...new Set(
-        (Array.isArray(body.scheduleIds)
-          ? body.scheduleIds
-          : []
-        )
-          .filter(
-            (value): value is string =>
-              typeof value === "string",
-          )
-          .map((value) => value.trim())
-          .filter(Boolean),
-      ),
-    ];
-
-    if (scheduleIds.length > 20) {
+    if (
+      body.scheduleIds != null &&
+      !Array.isArray(body.scheduleIds)
+    ) {
       throw new OfferBoxRedeemError(
-        "عدد المواعيد المختارة أكبر من المسموح.",
+        "المواعيد المختارة غير صالحة.",
         400,
-        "TOO_MANY_SCHEDULES",
+        "INVALID_SCHEDULE_SELECTION",
       );
     }
 
+    const rawScheduleIds = body.scheduleIds ?? [];
+
+    if (
+      rawScheduleIds.length > 20 ||
+      rawScheduleIds.some(
+        (id) => typeof id !== "string" || !id.trim(),
+      )
+    ) {
+      throw new OfferBoxRedeemError(
+        "المواعيد المختارة غير صالحة.",
+        400,
+        "INVALID_SCHEDULE_SELECTION",
+      );
+    }
+
+    const scheduleIds = rawScheduleIds.map(
+      (id) => id.trim(),
+    );
+
+    if (
+      new Set(scheduleIds).size !== scheduleIds.length
+    ) {
+      throw new OfferBoxRedeemError(
+        "لا يمكن اختيار نفس الموعد أكثر من مرة.",
+        400,
+        "DUPLICATE_SCHEDULE_SELECTION",
+      );
+    }
+
+    /*
+     * Ownership must be checked before querying Paymob.
+     * This read is not the final authorization: the transaction
+     * repeats the checks after acquiring its locks.
+     */
+    const initialPurchase =
+      await db.offerBoxPurchase.findUnique({
+        where: { id: purchaseId },
+      });
+
+    if (!initialPurchase) {
+      throw new OfferBoxRedeemError(
+        "العرض المحفوظ غير موجود.",
+        404,
+        "OFFER_BOX_PURCHASE_NOT_FOUND",
+      );
+    }
+
+    if (initialPurchase.userId !== user.id) {
+      throw new OfferBoxRedeemError(
+        "غير مسموح باستخدام هذا العرض.",
+        403,
+        "OFFER_BOX_NOT_OWNED",
+      );
+    }
+
+    /*
+     * Historical and independently redeemed purchases are read-only
+     * replays. They do not create a new right, change membership status,
+     * or rerun payment effects.
+     */
+    if (initialPurchase.status === "redeemed") {
+      return replayRedeemedPurchase(
+        purchaseId,
+        user.id,
+      );
+    }
+
+    if (initialPurchase.status !== "available") {
+      throw new OfferBoxRedeemError(
+        initialPurchase.status === "pending_payment"
+          ? "الدفع لم يكتمل بعد."
+          : "هذا العرض غير متاح للاستخدام.",
+        409,
+        initialPurchase.status === "pending_payment"
+          ? "OFFER_BOX_PAYMENT_PENDING"
+          : "OFFER_BOX_NOT_AVAILABLE",
+      );
+    }
+
+    if (body.confirmed !== true) {
+      throw new OfferBoxRedeemError(
+        "يجب تأكيد تفعيل العرض أولًا.",
+        400,
+        "OFFER_BOX_ACTIVATION_CONFIRMATION_REQUIRED",
+      );
+    }
+
+    if (!initialPurchase.paymentTransactionId) {
+      throw new Error("OFFER_BOX_PAYMENT_LINK_MISSING");
+    }
+
+    const payment =
+      await db.paymentTransaction.findUnique({
+        where: {
+          id: initialPurchase.paymentTransactionId,
+        },
+      });
+
+    if (
+      !payment ||
+      payment.userId !== user.id ||
+      payment.purpose !== "offer_box" ||
+      payment.provider !== "paymob" ||
+      payment.status !== "paid" ||
+      payment.membershipId !== null
+    ) {
+      throw new OfferBoxRedeemError(
+        "لا يمكن استخدام العرض قبل تأكيد الدفع.",
+        409,
+        "OFFER_BOX_PAYMENT_NOT_CONFIRMED",
+      );
+    }
+
+    /*
+     * Reuse the exact central Paymob Order verifier.
+     * A local paid status is never the payment proof.
+     */
+    const provider = getPaymentProvider("paymob");
+
+    if (!provider) {
+      throw new OfferBoxRedeemError(
+        "تعذر التحقق من الدفع حاليًا.",
+        503,
+        "PAYMOB_ORDER_VERIFIER_UNAVAILABLE",
+      );
+    }
+
+    const verification =
+      await provider.verifyTransaction({
+        id: payment.id,
+        providerReference: payment.providerReference,
+        externalReference: payment.externalReference,
+        amount: payment.amount,
+        currency: payment.currency,
+        metadata: payment.metadata,
+        providerPayload: payment.providerPayload,
+      });
+
+    if (verification.status !== "paid") {
+      throw new OfferBoxRedeemError(
+        "لم يتم تأكيد عملية الدفع من مزود الخدمة.",
+        409,
+        "PAYMOB_ORDER_PAID_PROOF_REQUIRED",
+      );
+    }
+
+    /*
+     * Repair a missing purchase-time commission using the existing
+     * central paid reconciliation. That service independently verifies
+     * authoritative Paymob proof and protects legacy HR identities.
+     *
+     * It does not activate memberships for offer_box payments.
+     */
+    await updatePaymentTransactionStatus(
+      payment.id,
+      "paid",
+    );
+
     const result = await db.$transaction(
       async (tx) => {
-        const purchase =
-          await lockPurchase(tx, purchaseId);
+        /*
+         * Shared per-customer lifecycle lock.
+         * Prevent concurrent booking/activation changes for this user.
+         */
+        await lockMembershipLifecycleUserTx(
+          asDbTransactionClient(tx),
+          user.id,
+        );
 
-        if (!purchase) {
+        await tx.$queryRaw`
+          SELECT id
+          FROM OfferBoxPurchase
+          WHERE id = ${purchaseId}
+          FOR UPDATE
+        `;
+
+        const purchase =
+          await tx.offerBoxPurchase.findUnique({
+            where: { id: purchaseId },
+          });
+
+        if (
+          !purchase ||
+          purchase.userId !== user.id
+        ) {
           throw new OfferBoxRedeemError(
-            "العرض المحفوظ غير موجود.",
+            "العرض المحفوظ غير متاح.",
             404,
             "OFFER_BOX_PURCHASE_NOT_FOUND",
           );
         }
 
-        if (purchase.userId !== user.id) {
-          throw new OfferBoxRedeemError(
-            "غير مسموح باستخدام هذا العرض.",
-            403,
-            "OFFER_BOX_NOT_OWNED",
+        if (purchase.status === "redeemed") {
+          return readRedeemedPurchaseTx(
+            tx,
+            purchase,
+            user.id,
           );
         }
 
         if (
-          purchase.status === "redeemed" &&
-          purchase.redeemedUserMembershipId
-        ) {
-          const membership =
-            await tx.userMembership.findUnique({
-              where: {
-                id:
-                  purchase.redeemedUserMembershipId,
-              },
-              select: {
-                id: true,
-                startDate: true,
-                endDate: true,
-                status: true,
-                totalSessions: true,
-                offerId: true,
-              },
-            });
-
-          if (!membership) {
-            throw new Error(
-              "OFFER_BOX_REDEEMED_MEMBERSHIP_MISSING",
-            );
-          }
-
-          return {
-            alreadyRedeemed: true,
-            membership,
-            bookedSchedules: [],
-            carryover: null,
-            paymentTransactionId:
-              purchase.paymentTransactionId,
-            offerSnapshot:
-              purchase.offerSnapshot,
-          };
-        }
-
-        if (purchase.status !== "available") {
-          throw new OfferBoxRedeemError(
-            purchase.status === "pending_payment"
-              ? "الدفع لم يكتمل بعد."
-              : "هذا العرض غير متاح للاستخدام.",
-            409,
-            purchase.status === "pending_payment"
-              ? "OFFER_BOX_PAYMENT_PENDING"
-              : "OFFER_BOX_NOT_AVAILABLE",
-          );
-        }
-
-        if (!purchase.paymentTransactionId) {
-          throw new Error(
-            "OFFER_BOX_PAYMENT_LINK_MISSING",
-          );
-        }
-
-        const payment =
-          await tx.paymentTransaction.findUnique({
-            where: {
-              id:
-                purchase.paymentTransactionId,
-            },
-            select: {
-              id: true,
-              userId: true,
-              purpose: true,
-              status: true,
-              amount: true,
-              currency: true,
-            },
-          });
-
-        if (
-          !payment ||
-          payment.userId !== user.id ||
-          payment.purpose !== "offer_box" ||
-          payment.status !== "paid"
-        ) {
-          throw new OfferBoxRedeemError(
-            "لا يمكن استخدام العرض قبل تأكيد الدفع.",
-            409,
-            "OFFER_BOX_PAYMENT_NOT_CONFIRMED",
-          );
-        }
-
-        if (
-          Math.abs(
-            Number(payment.amount) -
-            Number(purchase.priceSnapshot),
-          ) > 0.001 ||
-          String(payment.currency).toUpperCase() !==
-            String(purchase.currency).toUpperCase()
+          purchase.status !== "available" ||
+          purchase.redeemedUserMembershipId !== null ||
+          purchase.paymentTransactionId !== payment.id
         ) {
           throw new Error(
-            "OFFER_BOX_PAYMENT_CONTRACT_MISMATCH",
+            "OFFER_BOX_REDEEM_STATE_CHANGED",
+          );
+        }
+
+        if (
+          purchase.offerSnapshot !==
+            initialPurchase.offerSnapshot ||
+          purchase.snapshotVersion !== 1 ||
+          purchase.currency !== payment.currency ||
+          purchase.priceSnapshot !==
+            initialPurchase.priceSnapshot ||
+          Math.round(purchase.priceSnapshot * 100) !==
+            Math.round(payment.amount * 100)
+        ) {
+          throw new Error(
+            "OFFER_BOX_REDEEM_PURCHASE_CONTRACT_CHANGED",
           );
         }
 
         const snapshot =
           parseSnapshot(purchase.offerSnapshot);
 
-        if (
-          purchase.snapshotVersion !== 1 ||
-          snapshot.version !== 1
-        ) {
-          throw new OfferBoxRedeemError(
-            "إصدار Offer Box غير مدعوم.",
-            409,
-            "OFFER_BOX_SNAPSHOT_UNSUPPORTED",
-          );
-        }
-
-        await lockMembershipLifecycleUserTx(
-          asDbTransactionClient(tx),
-          user.id,
-        );
-
-        const template =
-          snapshot.membershipTemplate;
-
-        let membershipId =
-          template.sourceMembershipId;
-
-        let membership =
-          membershipId
-            ? await tx.membership.findUnique({
-                where: {
-                  id: membershipId,
-                },
-                select: {
-                  id: true,
-                  kind: true,
-                },
-              })
-            : null;
-
         /*
-         * If the original membership definition was deleted later,
-         * create an inert snapshot-backed template.
+         * Freeze the period at server-side confirmation.
+         * No lookup of the original live membership definition.
          */
-        if (!membership) {
-          const syntheticMarker =
-            `__offer_box_snapshot__:${purchase.id}`;
-
-          const existingSynthetic =
-            await tx.membership.findFirst({
-              where: {
-                subtitle: syntheticMarker,
-                isActive: false,
-              },
-              select: {
-                id: true,
-                kind: true,
-              },
-            });
-
-          if (existingSynthetic) {
-            membership = existingSynthetic;
-            membershipId =
-              existingSynthetic.id;
-          } else {
-            const synthetic =
-              await tx.membership.create({
-                data: {
-                  name:
-                    template.name ||
-                    snapshot.offer.title,
-                  nameEn:
-                    template.nameEn ||
-                    snapshot.offer.titleEn ||
-                    snapshot.offer.title,
-                  kind:
-                    template.kind ||
-                    "subscription",
-                  price:
-                    snapshot.commercial.finalPrice,
-                  priceBefore:
-                    snapshot.commercial.originalPrice,
-                  priceAfter:
-                    snapshot.commercial.finalPrice,
-                  duration:
-                    template.durationDays,
-                  cycle: "custom",
-                  sessionsCount:
-                    template.sessionsCount,
-                  features: JSON.stringify(
-                    snapshot.offer.features?.length
-                      ? snapshot.offer.features
-                      : [
-                          snapshot.offer.description ||
-                            "Offer Box subscription",
-                        ],
-                  ),
-                  featuresEn: JSON.stringify(
-                    snapshot.offer.featuresEn?.length
-                      ? snapshot.offer.featuresEn
-                      : [
-                          snapshot.offer.descriptionEn ||
-                            "Offer Box subscription",
-                        ],
-                  ),
-                  maxClasses: -1,
-                  walletBonus:
-                    Number(
-                      template.walletBonus ?? 0,
-                    ),
-                  productRewards:
-                    template.productRewards,
-                  isFeatured: false,
-                  isActive: false,
-                  subtitle: syntheticMarker,
-                },
-              });
-
-            membership = {
-              id: synthetic.id,
-              kind: synthetic.kind,
-            };
-
-            membershipId = synthetic.id;
-          }
-        }
-
-        if (!membershipId || !membership) {
-          throw new Error(
-            "OFFER_BOX_MEMBERSHIP_TEMPLATE_FAILED",
-          );
-        }
-
-        /*
-         * Duration starts at the actual redemption instant.
-         * Cairo calendar-day addition preserves the Cairo wall-clock
-         * time correctly across DST changes.
-         */
-        const startDate = new Date();
-
-        const endDate =
-          addCairoCalendarDays(
-            startDate,
-            template.durationDays,
+        const activation =
+          prepareConfirmedOfferBoxActivation(
+            snapshot,
+            body.confirmed === true,
+            scheduleIds,
+            new Date(),
           );
 
-        const sessionsCount =
-          template.sessionsCount;
-
-        const eligibilitySnapshot =
-          JSON.stringify(
-            snapshot.eligibilitySnapshot,
-          );
-
-        const allowedClassTypes =
-          Array.isArray(
-            snapshot.eligibilitySnapshot.classTypes,
-          )
-            ? snapshot.eligibilitySnapshot.classTypes.filter(
-                (value): value is string =>
-                  typeof value === "string",
-              )
-            : [];
-
-        const membershipOfferSnapshot =
-          JSON.stringify({
-            offerId: snapshot.offer.id,
-            title: snapshot.offer.title,
-            titleEn: snapshot.offer.titleEn,
-            description:
-              snapshot.offer.description,
-            descriptionEn:
-              snapshot.offer.descriptionEn,
-            features:
-              snapshot.offer.features,
-            featuresEn:
-              snapshot.offer.featuresEn,
-            type: snapshot.offer.type,
-            discountType:
-              snapshot.offer.type,
-            discountValue:
-              snapshot.offer.discount,
-            originalPrice:
-              snapshot.commercial.originalPrice,
-            finalPrice:
-              snapshot.commercial.finalPrice,
-            durationDays:
-              template.durationDays,
-            sessionsCount,
-            ageEligibility:
-              snapshot.ageEligibility,
-            offerBoxPurchaseId:
-              purchase.id,
-            purchasedAt:
-              snapshot.purchasedAt,
+        const existingEntitlement =
+          await tx.offerBoxEntitlement.findUnique({
+            where: { purchaseId: purchase.id },
+            select: { id: true },
           });
 
-        const subscription =
-          await tx.userMembership.create({
+        if (existingEntitlement) {
+          throw new Error(
+            "OFFER_BOX_AVAILABLE_ENTITLEMENT_REVIEW_REQUIRED",
+          );
+        }
+
+        const entitlement =
+          await tx.offerBoxEntitlement.create({
             data: {
+              purchaseId: purchase.id,
               userId: user.id,
-              membershipId,
-              startDate,
-              endDate,
               status: "active",
-              activatedAt: startDate,
-              pendingExpiresAt: null,
-              paymentAmount:
-                Number(
-                  purchase.priceSnapshot,
-                ),
-              paymentMethod: "offer_box",
-              offerTitle:
-                snapshot.offer.title,
-              offerId:
-                purchase.offerId,
-              totalSessions:
-                sessionsCount,
-              baseSessions:
-                sessionsCount,
-              eligibilitySnapshot,
-              offerSnapshot:
-                membershipOfferSnapshot,
+              startDate: activation.startDate,
+              endDate: activation.endDate,
+              totalSessions: activation.totalSessions,
+              eligibilitySnapshot:
+                activation.eligibilitySnapshot,
               allowedClassTypesSnapshot:
-                allowedClassTypes.length > 0
-                  ? JSON.stringify(
-                      allowedClassTypes,
-                    )
-                  : null,
-              snapshotDurationDays:
-                template.durationDays,
-              snapshotOriginalPrice:
-                snapshot.commercial.originalPrice,
-              snapshotFinalPrice:
-                snapshot.commercial.finalPrice,
-
-              commissionSnapshot:
-                snapshot.economics.commissionSnapshot,
-
-              productRewardsUsed:
-                template.productRewards,
+                activation.allowedClassTypesSnapshot,
             },
           });
 
-        /*
-         * New entitlement bookings FIRST.
-         * Any invalid/full selected schedule rolls back everything.
-         */
         const bookingResult =
-          await applyMembershipBookingPlanTx({
+          await applyOfferBoxBookingPlanTx({
             tx,
             userId: user.id,
-            userMembershipId:
-              subscription.id,
-            startDate:
-              subscription.startDate,
-            endDate:
-              subscription.endDate,
+            offerBoxEntitlementId: entitlement.id,
+            startDate: entitlement.startDate,
+            endDate: entitlement.endDate,
             selectedScheduleIds:
-              scheduleIds,
+              activation.selectedScheduleIds,
             source: {
               type: "offer",
               id: snapshot.offer.id,
             },
             plan: {
               kind:
-                template.kind ||
-                membership.kind,
-              sessionsCount,
+                snapshot.membershipTemplate.kind ||
+                "subscription",
+              sessionsCount:
+                activation.totalSessions,
               duration:
-                template.durationDays,
+                activation.durationDays,
             },
           });
 
         /*
-         * Carryover SECOND.
+         * Financial posting, wallet/points/product rewards and
+         * the exact-once marker participate in the same transaction.
          */
-        const carryover =
-          await applyMembershipSessionCarryoverTx(
-            asDbTransactionClient(tx),
-            {
-              userId: user.id,
-              targetMembershipId:
-                subscription.id,
-            },
-          );
-
-        if (
-          isBlockingMembershipCarryoverReason(
-            carryover.reason,
-          )
-        ) {
-          throw new OfferBoxRedeemError(
-            "لا يمكن تفعيل العرض المحفوظ تلقائيًا لأن اشتراكك الحالي أو حجوزاته يحتاج إلى مراجعة قبل النقل.",
-            409,
-            "OFFER_BOX_CARRYOVER_REVIEW_REQUIRED",
-          );
-        }
-
-        /*
-         * Supersession LAST.
-         */
-        await tx.userMembership.updateMany({
-          where: {
+        await settleIndependentOfferBoxActivationTx(
+          tx,
+          {
+            purchaseId: purchase.id,
+            entitlementId: entitlement.id,
             userId: user.id,
-            status: "active",
-            id: {
-              not: subscription.id,
+            verifiedPayment: {
+              verified: true,
+              id: payment.id,
+              providerReference:
+                payment.providerReference,
+              externalReference:
+                payment.externalReference,
+              providerPayload:
+                payment.providerPayload,
+              amount: payment.amount,
+              currency: payment.currency,
             },
           },
-          data: {
-            status: "expired",
-          },
-        });
+        );
 
         /*
-         * Convert reserved entitlement into a real subscriber.
+         * Convert the existing paid reservation exactly once.
+         * A deleted source offer remains redeemable from its snapshot.
          */
         if (purchase.offerId) {
-          const converted =
-            await tx.$executeRaw`
-              UPDATE Offer
-              SET
-                offerBoxReservedCount =
-                  offerBoxReservedCount - 1,
-                currentSubscribers =
-                  currentSubscribers + 1
-              WHERE
-                id = ${purchase.offerId}
-                AND offerBoxReservedCount > 0
-            `;
+          const converted = await tx.$executeRaw`
+            UPDATE Offer
+            SET
+              offerBoxReservedCount =
+                offerBoxReservedCount - 1,
+              currentSubscribers =
+                currentSubscribers + 1
+            WHERE id = ${purchase.offerId}
+              AND offerBoxReservedCount > 0
+          `;
 
           if (Number(converted) !== 1) {
             throw new Error(
@@ -730,255 +562,74 @@ export async function POST(req: Request) {
         }
 
         /*
-         * Exact-once final claim.
+         * Final claim. Never link the purchase or payment to
+         * a UserMembership for independent redemption.
          */
         const redeemed =
-          await tx.$executeRaw`
-            UPDATE OfferBoxPurchase
-            SET
-              status = 'redeemed',
-              redeemedAt =
-                CURRENT_TIMESTAMP(3),
-              redeemedUserMembershipId =
-                ${subscription.id},
-              holdExpiresAt = NULL,
-              updatedAt =
-                CURRENT_TIMESTAMP(3)
-            WHERE
-              id = ${purchase.id}
-              AND status = 'available'
-              AND redeemedUserMembershipId
-                IS NULL
-          `;
+          await tx.offerBoxPurchase.updateMany({
+            where: {
+              id: purchase.id,
+              userId: user.id,
+              status: "available",
+              redeemedUserMembershipId: null,
+              paymentTransactionId: payment.id,
+            },
+            data: {
+              status: "redeemed",
+              redeemedAt: new Date(),
+              holdExpiresAt: null,
+            },
+          });
 
-        if (Number(redeemed) !== 1) {
+        if (redeemed.count !== 1) {
           throw new Error(
             "OFFER_BOX_REDEEM_CLAIM_LOST",
           );
         }
 
-        /*
-         * Link the already-paid transaction to the membership
-         * created from the Box right.
-         */
-        await tx.paymentTransaction.update({
-          where: {
-            id:
-              purchase.paymentTransactionId,
-          },
-          data: {
-            membershipId:
-              subscription.id,
-          },
-        });
-
         return {
           alreadyRedeemed: false,
-          membership: {
-            id: subscription.id,
-            startDate:
-              subscription.startDate,
-            endDate:
-              subscription.endDate,
-            status:
-              subscription.status,
+          redemptionType: "independent" as const,
+          membership: null,
+          entitlement: {
+            id: entitlement.id,
+            startDate: entitlement.startDate,
+            endDate: entitlement.endDate,
+            status: entitlement.status,
             totalSessions:
-              subscription.totalSessions,
-            offerId:
-              subscription.offerId,
+              entitlement.totalSessions,
           },
           bookedSchedules:
             bookingResult.bookedSchedules,
-          carryover: {
-            eligible:
-              carryover.eligible,
-            reason:
-              carryover.reason,
-            carryoverSessions:
-              carryover.carryoverSessions,
-          },
-          paymentTransactionId:
-            purchase.paymentTransactionId,
-          offerSnapshot:
-            purchase.offerSnapshot,
+          carryover: null,
         };
       },
-      {
-        timeout: 20000,
-      },
+      { timeout: 20000 },
     );
-
-    if (!result.paymentTransactionId) {
-      throw new Error(
-        "OFFER_BOX_RECONCILIATION_PAYMENT_LINK_MISSING",
-      );
-    }
-
-    const reconciliationPayment =
-      await db.paymentTransaction.findUnique({
-        where: {
-          id: result.paymentTransactionId,
-        },
-        select: {
-          id: true,
-          userId: true,
-          membershipId: true,
-          purpose: true,
-          status: true,
-          amount: true,
-          currency: true,
-          paymentMethod: true,
-          paidAt: true,
-          metadata: true,
-        },
-      });
-
-    if (
-      !reconciliationPayment ||
-      reconciliationPayment.userId !== user.id ||
-      reconciliationPayment.membershipId !==
-        result.membership.id ||
-      reconciliationPayment.purpose !== "offer_box" ||
-      reconciliationPayment.status !== "paid"
-    ) {
-      throw new Error(
-        "OFFER_BOX_RECONCILIATION_PAYMENT_CONTRACT_MISMATCH",
-      );
-    }
-
-    const reconciliationSnapshot =
-      parseSnapshot(result.offerSnapshot);
-
-    if (
-      reconciliationSnapshot.version !== 1 ||
-      !reconciliationSnapshot.economics ||
-      reconciliationSnapshot.economics
-        .attributionMode !== "direct_offer_box"
-    ) {
-      throw new Error(
-        "OFFER_BOX_RECONCILIATION_SNAPSHOT_INVALID",
-      );
-    }
-
-    if (
-      Math.abs(
-        Number(reconciliationPayment.amount) -
-          Number(
-            reconciliationSnapshot.commercial.finalPrice,
-          ),
-      ) > 0.001 ||
-      String(reconciliationPayment.currency).toUpperCase() !==
-        String(
-          reconciliationSnapshot.commercial.currency,
-        ).toUpperCase()
-    ) {
-      throw new Error(
-        "OFFER_BOX_RECONCILIATION_AMOUNT_MISMATCH",
-      );
-    }
-
-    await runPaidMembershipPostActivationReconciliation({
-      transactionId:
-        reconciliationPayment.id,
-      userId:
-        user.id,
-      userMembershipId:
-        result.membership.id,
-
-      membershipData: {
-        status:
-          result.membership.status,
-        startDate:
-          result.membership.startDate,
-        offerId:
-          result.membership.offerId ?? null,
-
-        membership: {
-          name:
-            reconciliationSnapshot
-              .membershipTemplate.name,
-          nameEn:
-            reconciliationSnapshot
-              .membershipTemplate.nameEn,
-          duration:
-            reconciliationSnapshot
-              .membershipTemplate.durationDays,
-          walletBonus:
-            reconciliationSnapshot
-              .membershipTemplate.walletBonus,
-          productRewards:
-            reconciliationSnapshot
-              .membershipTemplate.productRewards,
-        },
-
-        /*
-         * Offer may now be hidden, inactive, expired or deleted.
-         * Notifications/invoice must use the immutable purchase snapshot.
-         */
-        offer: {
-          title:
-            reconciliationSnapshot.offer.title,
-        },
-      },
-
-      paymentAmount:
-        Number(reconciliationPayment.amount),
-      paymentMethod:
-        reconciliationPayment.paymentMethod ??
-        "paymob",
-      paidAt:
-        reconciliationPayment.paidAt,
-      transactionMetadata:
-        reconciliationPayment.metadata,
-
-      /*
-       * Redeem transaction already converted:
-       * offerBoxReservedCount - 1
-       * currentSubscribers + 1
-       */
-      skipOfferSubscriberIncrement: true,
-    });
 
     return NextResponse.json({
       success: true,
-      alreadyRedeemed:
-        result.alreadyRedeemed,
-      membership:
-        result.membership,
-      bookedSchedules:
-        result.bookedSchedules,
-      carryover:
-        result.carryover,
+      ...result,
     });
   } catch (error) {
-    if (
-      error instanceof
-      MembershipBookingPlanError
-    ) {
+    if (error instanceof MembershipBookingPlanError) {
       return NextResponse.json(
         {
           error: error.message,
-          code:
-            "OFFER_BOX_SCHEDULE_INVALID",
-          action:
-            error.action,
+          code: "OFFER_BOX_SCHEDULE_INVALID",
+          action: error.action,
         },
         { status: 409 },
       );
     }
 
-    if (
-      error instanceof
-      OfferBoxRedeemError
-    ) {
+    if (error instanceof OfferBoxRedeemError) {
       return NextResponse.json(
         {
           error: error.message,
           code: error.code,
         },
-        {
-          status: error.status,
-        },
+        { status: error.status },
       );
     }
 
@@ -989,12 +640,161 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       {
-        error:
-          "تعذر استخدام العرض المحفوظ حاليًا.",
-        code:
-          "OFFER_BOX_REDEEM_FAILED",
+        error: "تعذر استخدام العرض المحفوظ حاليًا.",
+        code: "OFFER_BOX_REDEEM_FAILED",
       },
       { status: 500 },
     );
   }
+}
+
+type RedeemedPurchaseIdentity = {
+  id: string;
+  userId: string;
+  status: string;
+  redeemedUserMembershipId: string | null;
+};
+
+type RedeemTransaction =
+  Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * Read-only replay. Historical and independent identities must never
+ * coexist for the same purchase.
+ */
+async function readRedeemedPurchaseTx(
+  tx: RedeemTransaction,
+  purchase: RedeemedPurchaseIdentity,
+  userId: string,
+) {
+  if (
+    purchase.userId !== userId ||
+    purchase.status !== "redeemed"
+  ) {
+    throw new Error(
+      "OFFER_BOX_REDEEMED_PURCHASE_IDENTITY_MISMATCH",
+    );
+  }
+
+  const entitlement =
+    await tx.offerBoxEntitlement.findUnique({
+      where: { purchaseId: purchase.id },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        totalSessions: true,
+      },
+    });
+
+  if (purchase.redeemedUserMembershipId) {
+    if (entitlement) {
+      throw new Error(
+        "OFFER_BOX_DUAL_REDEMPTION_REVIEW_REQUIRED",
+      );
+    }
+
+    const membership =
+      await tx.userMembership.findUnique({
+        where: {
+          id: purchase.redeemedUserMembershipId,
+        },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          totalSessions: true,
+          offerId: true,
+        },
+      });
+
+    if (
+      !membership ||
+      membership.userId !== userId
+    ) {
+      throw new Error(
+        "OFFER_BOX_LEGACY_REDEMPTION_IDENTITY_MISMATCH",
+      );
+    }
+
+    const {
+      userId: _owner,
+      ...membershipData
+    } = membership;
+
+    return {
+      alreadyRedeemed: true,
+      redemptionType: "legacy_membership" as const,
+      membership: membershipData,
+      entitlement: null,
+      bookedSchedules: [],
+      carryover: null,
+    };
+  }
+
+  if (
+    !entitlement ||
+    entitlement.userId !== userId
+  ) {
+    throw new Error(
+      "OFFER_BOX_REDEEMED_ENTITLEMENT_MISSING",
+    );
+  }
+
+  const {
+    userId: _owner,
+    ...entitlementData
+  } = entitlement;
+
+  return {
+    alreadyRedeemed: true,
+    redemptionType: "independent" as const,
+    membership: null,
+    entitlement: entitlementData,
+    bookedSchedules: [],
+    carryover: null,
+  };
+}
+
+async function replayRedeemedPurchase(
+  purchaseId: string,
+  userId: string,
+) {
+  const result = await db.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`
+        SELECT id
+        FROM OfferBoxPurchase
+        WHERE id = ${purchaseId}
+        FOR UPDATE
+      `;
+
+      const purchase =
+        await tx.offerBoxPurchase.findUnique({
+          where: { id: purchaseId },
+        });
+
+      if (!purchase) {
+        throw new Error(
+          "OFFER_BOX_REDEEMED_PURCHASE_MISSING",
+        );
+      }
+
+      return readRedeemedPurchaseTx(
+        tx,
+        purchase,
+        userId,
+      );
+    },
+    { timeout: 10000 },
+  );
+
+  return NextResponse.json({
+    success: true,
+    ...result,
+  });
 }

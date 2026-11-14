@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   configFindUnique: vi.fn(),
   groupFindFirst: vi.fn(),
   groupFindUnique: vi.fn(),
+  inviteFindUnique: vi.fn(),
+  txInviteFindUnique: vi.fn(),
+  txGroupLock: vi.fn(),
 
   transaction: vi.fn(),
 
@@ -34,6 +37,7 @@ vi.mock("@/lib/db", () => ({
       findFirst: mocks.groupFindFirst,
       findUnique: mocks.groupFindUnique,
     },
+    friendOfferInviteLink: { findUnique: mocks.inviteFindUnique },
     $transaction: mocks.transaction,
   },
 }));
@@ -51,6 +55,7 @@ function loadedGroup(participants: Array<{
   return {
     id: "group-1",
     inviteToken: "COMMITTEDTOKEN",
+    individualInvitesEnabled: false,
     status: participants.length >= 2 ? "ready" : "waiting",
     expiresAt: new Date(Date.now() - 60_000),
     priceSnapshotMinor: 56000,
@@ -95,6 +100,9 @@ function loadedGroup(participants: Array<{
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.inviteFindUnique.mockResolvedValue(null);
+  mocks.txInviteFindUnique.mockResolvedValue(null);
+  mocks.txGroupLock.mockResolvedValue([{ id: "group-1" }]);
 
   mocks.getEligibility.mockResolvedValue({});
 
@@ -106,6 +114,8 @@ beforeEach(() => {
   mocks.transaction.mockImplementation(
     async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
+        $queryRaw: mocks.txGroupLock,
+        friendOfferInviteLink: { findUnique: mocks.txInviteFindUnique },
         friendOfferGroup: {
           findUnique: mocks.txGroupFindUnique,
           update: mocks.txGroupUpdate,
@@ -215,6 +225,7 @@ describe("Friend Offer committed edge cases", () => {
     mocks.txGroupFindUnique.mockResolvedValue({
       id: "group-1",
       inviteToken: "COMMITTEDTOKEN",
+      individualInvitesEnabled: false,
       status: "waiting",
       expiresAt: new Date(Date.now() - 60_000),
       priceSnapshotMinor: 56000,
@@ -305,6 +316,7 @@ function committedJoinFixture(student: boolean) {
   return {
     id: "group-1",
     inviteToken: "COMMITTEDTOKEN",
+    individualInvitesEnabled: false,
     status: "waiting",
     expiresAt: expired,
     priceSnapshotMinor: 56000,

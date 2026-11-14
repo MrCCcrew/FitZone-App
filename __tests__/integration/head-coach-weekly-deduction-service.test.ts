@@ -1,3 +1,21 @@
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import {
   afterAll,
   beforeAll,
@@ -29,8 +47,8 @@ if (
   process.env.APP_ENV !== "test" ||
   process.env.NODE_ENV !== "test" ||
   url.hostname !== "127.0.0.1" ||
-  decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  decodeURIComponent(url.username) !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_r13_user" : "fitzone_test_user") ||
+  url.pathname !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "/fitzone_final_release_r13_test" : "/fitzone_test")
 ) {
   throw new Error(
     "REFUSING: Head Coach deduction tests require fitzone_test",
@@ -107,23 +125,23 @@ async function attendance(
 }
 
 beforeAll(async () => {
-  const existingPosition =
-    await db.position.findUnique({
-      where: {
-        code: "HEAD_COACH_OWNER",
-      },
-    });
+  const existingPosition = await db.position.findUnique({
+    where: { code: "HEAD_COACH_OWNER" },
+    select: { id: true },
+  });
 
-  const headPosition =
-    existingPosition ??
-    (await db.position.create({
-      data: {
-        code: "HEAD_COACH_OWNER",
-        name: "هيد كوتش / المالك",
-        nameEn: "Head Coach / Owner",
-        isActive: true,
-      },
-    }));
+  if (existingPosition) {
+    throw new Error("R15ZAK_EXISTING_HEAD_POSITION_COLLISION");
+  }
+
+  const headPosition = await db.position.create({
+    data: {
+      code: "HEAD_COACH_OWNER",
+      name: "هيد كوتش / المالك",
+      nameEn: "Head Coach / Owner",
+      isActive: true,
+    },
+  });
 
   headPositionId = headPosition.id;
 
@@ -203,6 +221,7 @@ afterAll(async () => {
       occurrenceKey: {
         startsWith: `HEAD-HOURS-${stamp}-`,
       },
+      scheduledEmployeeId: employeeId || "__R15ZAA_NO_EMPLOYEE__",
     },
   });
 
@@ -218,6 +237,16 @@ afterAll(async () => {
     await db.employeeProfile.deleteMany({
       where: {
         id: employeeId,
+      },
+    });
+  }
+
+  if (headPositionId) {
+    await db.position.deleteMany({
+      where: {
+        id: headPositionId,
+        code: "HEAD_COACH_OWNER",
+        name: "هيد كوتش / المالك",
       },
     });
   }

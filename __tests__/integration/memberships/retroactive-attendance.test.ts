@@ -1,3 +1,21 @@
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -35,8 +53,8 @@ function testDatabaseUrl() {
     parsed.protocol !== "mysql:" ||
     parsed.hostname !== "127.0.0.1" ||
     parsed.port !== "3306" ||
-    decodeURIComponent(parsed.username) !== "fitzone_test_user" ||
-    database !== "fitzone_test" ||
+    decodeURIComponent(parsed.username) !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_r13_user" : "fitzone_test_user") ||
+    database !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_final_release_r13_test" : "fitzone_test") ||
     process.env.APP_ENV !== "test" ||
     process.env.DATABASE_URL !== value
   ) {
@@ -438,5 +456,238 @@ describe("retroactive membership attendance", () => {
       });
 
     expect(afterRetry).toBe(4);
+  }, 30000);
+});
+
+describe("retroactive attendance independent ownership", () => {
+  it("rejects an independent offer booking and preserves all ownership and financial fields", async () => {
+    const originalMembership =
+      await db.userMembership.findUniqueOrThrow({
+        where: { id: userMembershipId },
+      });
+
+    const eligibilitySnapshot = JSON.stringify({
+      mode: "class_ids",
+      classIds: [classId],
+      classTypes: [],
+    });
+
+    let purchaseId: string | null = null;
+    let entitlementId: string | null = null;
+    let independentScheduleId: string | null = null;
+    let independentBookingId: string | null = null;
+
+    try {
+      const purchase = await db.offerBoxPurchase.create({
+        data: {
+          userId: customerId,
+          status: "redeemed",
+          priceSnapshot: 100,
+          currency: "EGP",
+          paidAt: new Date(),
+          redeemedAt: new Date(),
+          offerSnapshot: JSON.stringify({
+            version: 1,
+            offer: {
+              title: "Retroactive ownership fixture",
+            },
+            membershipTemplate: {
+              name: "Independent fixture",
+              durationDays: 30,
+              sessionsCount: 3,
+            },
+            eligibilitySnapshot: JSON.parse(
+              eligibilitySnapshot,
+            ),
+            commercial: {
+              currency: "EGP",
+              finalPrice: 100,
+            },
+          }),
+        },
+      });
+
+      purchaseId = purchase.id;
+
+      const entitlement = await db.offerBoxEntitlement.create({
+        data: {
+          purchaseId: purchase.id,
+          userId: customerId,
+          status: "active",
+          startDate: dayOffset(-20),
+          endDate: dayOffset(20),
+          totalSessions: 3,
+          eligibilitySnapshot,
+        },
+      });
+
+      entitlementId = entitlement.id;
+
+      const schedule = await db.schedule.create({
+        data: {
+          classId,
+          date: dayOffset(-15),
+          time: "13:00",
+          availableSpots: 9,
+          isActive: true,
+        },
+      });
+
+      independentScheduleId = schedule.id;
+
+      const booking = await db.booking.create({
+        data: {
+          userId: customerId,
+          scheduleId: schedule.id,
+          userMembershipId: null,
+          offerBoxEntitlementId: entitlement.id,
+          status: "confirmed",
+          paidAmount: 0,
+          paymentMethod: "offer_box",
+          entitlementUnits: 1,
+          isMakeup: false,
+        },
+      });
+
+      independentBookingId = booking.id;
+
+      const beforeMembership =
+        await db.userMembership.findUniqueOrThrow({
+          where: { id: userMembershipId },
+        });
+
+      const beforeBookings = await db.booking.findMany({
+        where: { userId: customerId },
+        orderBy: { id: "asc" },
+      });
+
+      const beforeCheckIns =
+        await db.attendanceCheckIn.findMany({
+          where: { userId: customerId },
+          orderBy: { id: "asc" },
+        });
+
+      const beforePayments =
+        await db.paymentTransaction.findMany({
+          where: { userId: customerId },
+          orderBy: { id: "asc" },
+        });
+
+      const preview =
+        await listRetroactiveAttendanceCandidates({
+          userMembershipId,
+          days: 30,
+        });
+
+      const row = preview.schedules.find(
+        (candidate) => candidate.id === schedule.id,
+      );
+
+      expect(row).toBeDefined();
+      expect(row?.selectable).toBe(false);
+      expect(row?.hasStandaloneReservation).toBe(false);
+
+      await expect(
+        applyRetroactiveMembershipAttendance({
+          userMembershipId,
+          scheduleIds: [schedule.id],
+          adminUserId: adminId,
+        }),
+      ).rejects.toMatchObject({
+        code: "BOOKING_ALREADY_LINKED",
+      });
+
+      expect(
+        await db.userMembership.findUniqueOrThrow({
+          where: { id: userMembershipId },
+        }),
+      ).toEqual(beforeMembership);
+
+      expect(
+        await db.booking.findMany({
+          where: { userId: customerId },
+          orderBy: { id: "asc" },
+        }),
+      ).toEqual(beforeBookings);
+
+      expect(
+        await db.attendanceCheckIn.findMany({
+          where: { userId: customerId },
+          orderBy: { id: "asc" },
+        }),
+      ).toEqual(beforeCheckIns);
+
+      expect(
+        await db.paymentTransaction.findMany({
+          where: { userId: customerId },
+          orderBy: { id: "asc" },
+        }),
+      ).toEqual(beforePayments);
+
+      expect(
+        await db.booking.findUniqueOrThrow({
+          where: { id: booking.id },
+        }),
+      ).toMatchObject({
+        userMembershipId: null,
+        offerBoxEntitlementId: entitlement.id,
+        status: "confirmed",
+        paidAmount: 0,
+        entitlementUnits: 1,
+      });
+
+      expect(
+        await db.schedule.findUniqueOrThrow({
+          where: { id: schedule.id },
+        }),
+      ).toEqual(schedule);
+
+      expect(
+        await db.offerBoxEntitlement.findUniqueOrThrow({
+          where: { id: entitlement.id },
+        }),
+      ).toEqual(entitlement);
+
+      expect(
+        await db.offerBoxPurchase.findUniqueOrThrow({
+          where: { id: purchase.id },
+        }),
+      ).toEqual(purchase);
+
+      expect(beforeMembership.paymentAmount).toBe(
+        originalMembership.paymentAmount,
+      );
+    } finally {
+      // Remove only this test's explicit fixture IDs.
+      if (independentBookingId) {
+        await db.attendanceCheckIn.deleteMany({
+          where: {
+            bookingId: independentBookingId,
+          },
+        });
+
+        await db.booking.deleteMany({
+          where: { id: independentBookingId },
+        });
+      }
+
+      if (entitlementId) {
+        await db.offerBoxEntitlement.deleteMany({
+          where: { id: entitlementId },
+        });
+      }
+
+      if (purchaseId) {
+        await db.offerBoxPurchase.deleteMany({
+          where: { id: purchaseId },
+        });
+      }
+
+      if (independentScheduleId) {
+        await db.schedule.deleteMany({
+          where: { id: independentScheduleId },
+        });
+      }
+    }
   }, 30000);
 });

@@ -1,5 +1,6 @@
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -19,12 +20,24 @@ if (!raw) {
 const url = new URL(raw);
 
 if (
-  process.env.APP_ENV !== "test" ||
+  (
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1"
+      ? !(
+          process.env.APP_ENV === "test" &&
+          process.env.NODE_ENV === "test" &&
+          url.protocol === "mysql:" &&
+          url.hostname === "127.0.0.1" &&
+          url.port === "3306" &&
+          url.pathname === "/fitzone_final_release_r13_test" &&
+          decodeURIComponent(url.username) === "fitzone_r13_user"
+        )
+      : (process.env.APP_ENV !== "test" ||
   process.env.NODE_ENV !== "test" ||
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  url.pathname !== "/fitzone_test")
+  )
 ) {
   throw new Error(
     "REFUSING: Employee Attendance API tests require fitzone_test",
@@ -93,6 +106,7 @@ const unlockPeriod = unlockPeriodRoute as unknown as TestRouteHandler;
 const db = new PrismaClient();
 
 const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const r15zrOwnedPeriodIds = new Set<string>();
 
 const employeeCode = `TEST-HR-ATT-API-${stamp}`;
 
@@ -132,9 +146,8 @@ async function cleanup() {
 
   await db.attendancePeriod.deleteMany({
     where: {
-      monthKey: {
-        in: ["2026-09", "2026-10", "2026-11", "2026-12"],
-      },
+      id: { in: [...r15zrOwnedPeriodIds] },
+      monthKey: { in: ["2026-09", "2026-10", "2026-11", "2026-12"] },
     },
   });
 
@@ -153,6 +166,12 @@ async function cleanup() {
 
 beforeAll(async () => {
   await db.$connect();
+  const r15zqExistingPeriods = await db.attendancePeriod.count({
+    where: { monthKey: { in: ["2026-09", "2026-10", "2026-11", "2026-12"] } },
+  });
+  if (r15zqExistingPeriods !== 0) {
+    throw new Error("R15ZQ_EMPLOYEE_PERIOD_COLLISION");
+  }
   await cleanup();
 
   const admin = await db.user.create({
@@ -183,6 +202,17 @@ beforeAll(async () => {
 beforeEach(() => {
   guardState.mode = "allowed";
   guardState.lastPermission = "";
+});
+
+afterEach(async () => {
+  const periods = await db.attendancePeriod.findMany({
+    where: { monthKey: { in: ["2026-09", "2026-10", "2026-11", "2026-12"] } },
+    select: { id: true },
+  });
+
+  for (const period of periods) {
+    r15zrOwnedPeriodIds.add(period.id);
+  }
 });
 
 afterAll(async () => {
