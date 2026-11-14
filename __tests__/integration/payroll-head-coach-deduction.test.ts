@@ -1,3 +1,21 @@
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import {
   afterAll,
   beforeAll,
@@ -135,15 +153,29 @@ beforeAll(async () => {
     >("SELECT DATABASE() AS db");
 
   if (
-    current[0]?.db !== "fitzone_test"
+    current[0]?.db !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_final_release_r13_test" : "fitzone_test")
   ) {
     throw new Error(
       "REFUSING_NON_TEST_DB",
     );
   }
 
-  actor =
-    await db.user.create({
+  const existingHead = await db.position.findUnique({
+    where: { code: "HEAD_COACH_OWNER" },
+    select: { id: true },
+  });
+  if (existingHead) {
+    throw new Error("R15ZAK_EXISTING_HEAD_POSITION_COLLISION");
+  }
+
+  const existingPayroll = await db.payrollRun.count({
+    where: { monthKey },
+  });
+  if (existingPayroll !== 0) {
+    throw new Error("R15ZAK_EXISTING_PAYROLL_RUN_COLLISION");
+  }
+
+  actor = await db.user.create({
       data: {
         email:
           `c07-payroll-${stamp}@example.test`,
@@ -156,19 +188,14 @@ beforeAll(async () => {
       },
     });
 
-  const position =
-    await db.position.findUnique({
-      where: {
-        code:
-          "HEAD_COACH_OWNER",
-      },
-    });
-
-  if (!position) {
-    throw new Error(
-      "HEAD_COACH_OWNER_POSITION_REQUIRED",
-    );
-  }
+  const position = await db.position.create({
+    data: {
+      code: "HEAD_COACH_OWNER",
+      name: `Head Coach Payroll Test ${stamp}`,
+      nameEn: "Head Coach / Owner",
+      isActive: true,
+    },
+  });
 
   positionId =
     position.id;
@@ -388,6 +415,15 @@ afterAll(async () => {
       },
     });
 
+    await db.auditLog.deleteMany({
+      where: {
+        targetType: "PayrollRun",
+        targetId: run.id,
+        actorName: "C07 Payroll Actor",
+        action: "payroll_run_calculate",
+      },
+    });
+
     await db.payrollRun.delete({
       where: {
         id:
@@ -402,6 +438,7 @@ afterAll(async () => {
         startsWith:
           `C07-PAYROLL-${stamp}-`,
       },
+      scheduledEmployeeId: employeeId || "__R15ZAA_NO_EMPLOYEE__",
     },
   });
 
@@ -435,12 +472,27 @@ afterAll(async () => {
     });
   }
 
+  if (actor?.id) {
+    await db.auditLog.deleteMany({
+      where: { actorUserId: actor.id },
+    });
+  }
+
   await db.user.deleteMany({
     where: {
       id:
         actor?.id,
     },
   });
+
+  if (positionId) {
+    await db.position.deleteMany({
+      where: {
+        id: positionId,
+        code: "HEAD_COACH_OWNER",
+      },
+    });
+  }
 });
 
 describe(

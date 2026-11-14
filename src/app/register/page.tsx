@@ -5,6 +5,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/language";
+import { normalizeFriendOfferReturn, withFriendOfferReturn } from "@/lib/friend-offer-auth-return";
 
 const REFERRAL_DEVICE_ID_KEY = "fitzone:referral-device-id:v1";
 
@@ -68,7 +69,7 @@ function AppleIcon() {
   );
 }
 
-function SocialButtons({ lang, acceptedTerms, referralCode, partnerRef, staffRef, trainerRef, nutritionRef, agentRef }: { lang: string; acceptedTerms: boolean; referralCode?: string; partnerRef?: string; staffRef?: string; trainerRef?: string; nutritionRef?: string; agentRef?: string }) {
+function SocialButtons({ lang, acceptedTerms, referralCode, partnerRef, staffRef, trainerRef, nutritionRef, agentRef, friendReturn }: { lang: string; acceptedTerms: boolean; referralCode?: string; partnerRef?: string; staffRef?: string; trainerRef?: string; nutritionRef?: string; agentRef?: string; friendReturn?: string | null }) {
   const t = (ar: string, en: string) => (lang === "ar" ? ar : en);
   const googleHref = acceptedTerms
     ? (() => {
@@ -80,7 +81,9 @@ function SocialButtons({ lang, acceptedTerms, referralCode, partnerRef, staffRef
         if (nutritionRef) params.set("nutritionRef", nutritionRef);
         if (agentRef) params.set("agentRef", agentRef);
         const qs = params.toString();
-        return `/api/auth/oauth/google${qs ? `?${qs}` : ""}`;
+        if (friendReturn) params.set("callbackUrl", friendReturn);
+        const nextQs = params.toString();
+        return `/api/auth/oauth/google${nextQs ? `?${nextQs}` : ""}`;
       })()
     : undefined;
   return (
@@ -138,6 +141,7 @@ function RegisterForm() {
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const friendReturn = normalizeFriendOfferReturn(searchParams.get("callbackUrl"));
 
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
   const [referralCode, setReferralCode] = useState("");
@@ -294,6 +298,7 @@ function RegisterForm() {
       if ((res.ok || res.status === 409) && data?.requiresVerification && data?.email) {
         const search = new URLSearchParams({ email: data.email });
         if (data.emailSent === false) search.set("sent", "0");
+        if (friendReturn) search.set("callbackUrl", friendReturn);
         router.push(`/verify-email?${search.toString()}`);
         return;
       }
@@ -569,11 +574,11 @@ function RegisterForm() {
             </button>
           </form>
 
-          <SocialButtons lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} partnerRef={partnerRef || undefined} staffRef={staffRef || undefined} trainerRef={trainerRef || undefined} nutritionRef={nutritionRef || undefined} agentRef={agentRef || undefined} />
+          <SocialButtons friendReturn={friendReturn} lang={lang} acceptedTerms={acceptedTerms} referralCode={referralCode || undefined} partnerRef={partnerRef || undefined} staffRef={staffRef || undefined} trainerRef={trainerRef || undefined} nutritionRef={nutritionRef || undefined} agentRef={agentRef || undefined} />
 
           <div className="mt-6 text-center text-sm">
             <span className="text-gray-400">{t("لديك حساب بالفعل؟", "Already have an account?")} </span>
-            <Link href="/login" className="font-bold text-pink-300 transition-colors hover:text-pink-200">
+            <Link href={withFriendOfferReturn("/login", friendReturn)} className="font-bold text-pink-300 transition-colors hover:text-pink-200">
               {t("تسجيل الدخول", "Log in")}
             </Link>
           </div>

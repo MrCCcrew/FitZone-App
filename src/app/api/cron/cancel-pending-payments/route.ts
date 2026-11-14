@@ -1,14 +1,22 @@
+import { reconcileDueDirectCommercialHolds } from "@/lib/offer-box/reconcile-direct-commercial-hold";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
 import { cleanupExpiredPendingMembership } from "@/lib/payments/pending-membership-cleanup";
-import { reconcileExpiredPaymobMembership } from "@/lib/payments/expired-membership-paymob-reconciliation";
+import { settleExpiredPendingMembership } from "@/lib/payments/expired-membership-settlement";
 import { expireEndedActiveMembershipsTx } from "@/lib/membership-lifecycle";
 import { extendRecurringSchedules } from "@/lib/schedule-maintenance";
 
 // Called every 5 minutes in production.
 // Staging MUST never execute the real cleanup cron.
 export async function GET(req: Request) {
+  // Preview deployments must never execute production background jobs.
+  if (process.env.FITZONE_DISABLE_BACKGROUND_JOBS === "1") {
+    return NextResponse.json(
+      { error: "Background jobs disabled" },
+      { status: 403 },
+    );
+  }
   if (process.env.APP_ENV === "staging") {
     return Response.json(
       { error: "Cron disabled in staging" },
@@ -45,6 +53,9 @@ export async function GET(req: Request) {
 
   const now = new Date();
 
+  const directCommercial =
+    await reconcileDueDirectCommercialHolds(now);
+
   /*
    * First materialize/reconcile entitlement.
    *
@@ -80,6 +91,7 @@ export async function GET(req: Request) {
   if (pending.length === 0) {
     return NextResponse.json({
       ok: true,
+      directCommercial,
       found: 0,
       cancelled: 0,
       expiredMemberships: expiration.expired,
@@ -108,21 +120,26 @@ export async function GET(req: Request) {
 
   for (const membership of pending) {
     try {
+      let result;
+
       if (inquiryCandidates.has(membership.id)) {
         providerInquiries++;
-        const reconciliation = await reconcileExpiredPaymobMembership(
-          membership.id,
-        );
-        if (reconciliation.kind === "paid_recovered") {
+
+        const settlement =
+          await settleExpiredPendingMembership(membership.id);
+
+        if (settlement.kind === "paid_recovered") {
           paidRecovered++;
           continue;
         }
-      }
 
-      const result = await cleanupExpiredPendingMembership(
-        membership.id,
-        now,
-      );
+        result = settlement.cleanup;
+      } else {
+        result = await cleanupExpiredPendingMembership(
+          membership.id,
+          new Date(),
+        );
+      }
 
       if (!result.cleaned) {
         skipped++;
@@ -208,7 +225,10 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    ok: failures.length === 0,
+    ok:
+      failures.length === 0 &&
+      directCommercial.failedPurchaseIds.length === 0,
+    directCommercial,
     found: pending.length,
     cancelled,
     paidRecovered,

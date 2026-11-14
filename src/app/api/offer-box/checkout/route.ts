@@ -1,11 +1,16 @@
+import { createPendingCommercialPurchaseTx } from "@/lib/offer-box/create-commercial-purchase";
+import { asDbTransactionClient as asCommercialPurchaseTransactionClient } from "@/lib/db";
+import { createCommercialPurchaseSource } from "@/lib/offer-box/commercial-source-contract";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { evaluateEgyptianNationalIdAgeEligibility, evaluateOfferAgeEligibility } from "@/lib/offer-age-eligibility";
 import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
+import { isOfferBoxPaymobCheckoutReady } from "@/lib/payments/offer-box-checkout-readiness";
 import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classes";
 import { buildMembershipCommissionSnapshotTx } from "@/lib/commissions/membership-commission-snapshot-builder";
+import { resolveOfferBoxStaffReferralLinkTx } from "@/lib/offer-box/staff-referral-attribution";
 import {
   createPaymentTransaction,
   updatePaymentTransactionStatus,
@@ -109,6 +114,16 @@ export async function POST(req: Request) {
         "يرجى اختيار العرض أولًا.",
         400,
         "OFFER_ID_REQUIRED",
+      );
+    }
+
+    // Definitive local configuration failures must not reserve an offer
+    // or create an orphan payment. No Paymob network request happens here.
+    if (!(await isOfferBoxPaymobCheckoutReady())) {
+      throw new OfferBoxCheckoutError(
+        "الدفع الإلكتروني غير متاح مؤقتًا. يرجى المحاولة لاحقًا.",
+        503,
+        "OFFER_BOX_PAYMENT_PROVIDER_NOT_READY",
       );
     }
 
@@ -385,6 +400,12 @@ export async function POST(req: Request) {
             tx,
           );
 
+        const staffReferralLinkId =
+          await resolveOfferBoxStaffReferralLinkTx(
+            asDbTransactionClient(tx),
+            user.id,
+          );
+
         const commissionSnapshot =
           await buildMembershipCommissionSnapshotTx(
             asDbTransactionClient(tx),
@@ -396,7 +417,7 @@ export async function POST(req: Request) {
               salesAgentUserId: null,
               salesAgentId: null,
 
-              staffReferralLinkId: null,
+              staffReferralLinkId: staffReferralLinkId,
               trainerReferralLinkId: null,
               nutritionReferralLinkId: null,
 
@@ -486,6 +507,14 @@ export async function POST(req: Request) {
           },
         };
 
+        const commercialSource =
+          createCommercialPurchaseSource({
+            commercialKind: "offer_box",
+            offerId: offer.id,
+            catalogMembershipId:
+              snapshot.membershipTemplate.sourceMembershipId ?? null,
+          });
+
         const purchaseId = randomUUID();
 
         const capacityClaim =
@@ -514,38 +543,17 @@ export async function POST(req: Request) {
           );
         }
 
-        await tx.$executeRaw`
-          INSERT INTO OfferBoxPurchase (
-            id,
-            userId,
-            offerId,
-            status,
-            offerSnapshot,
-            snapshotVersion,
-            priceSnapshot,
-            currency,
-            paymentMethod,
-            holdExpiresAt,
-            paymentTransactionId,
-            createdAt,
-            updatedAt
-          )
-          VALUES (
-            ${purchaseId},
-            ${user.id},
-            ${offer.id},
-            'pending_payment',
-            ${JSON.stringify(snapshot)},
-            1,
-            ${finalPrice},
-            'EGP',
-            'paymob',
-            ${provisionalHoldExpiresAt},
-            NULL,
-            CURRENT_TIMESTAMP(3),
-            CURRENT_TIMESTAMP(3)
-          )
-        `;
+        await createPendingCommercialPurchaseTx(
+          asCommercialPurchaseTransactionClient(tx),
+          {
+            purchaseId,
+            userId: user.id,
+            source: commercialSource,
+            snapshot,
+            amount: finalPrice,
+            holdExpiresAt: provisionalHoldExpiresAt,
+          },
+        );
 
         return {
           purchaseId,

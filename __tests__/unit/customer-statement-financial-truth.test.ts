@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => ({
     discountCodeUsage: { findMany: vi.fn(async () => []) },
     trainerDiscountCode: { findMany: vi.fn(async () => []) },
     staffDiscountCode: { findMany: vi.fn(async () => []) },
+    offerBoxPurchase: { findMany: vi.fn(async () => []) },
     paymentTransaction: {
       findMany: vi.fn(async (args: {
         where: { membershipId: { in: string[] }; status: string; purpose: string };

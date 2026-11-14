@@ -1,3 +1,4 @@
+import { getOfferBoxCommissionTitle } from "@/lib/offer-box/commission-display";
 import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { db, asDbTransactionClient } from "@/lib/db";
@@ -79,6 +80,14 @@ export async function GET(req: Request) {
           ...(agentUserId ? { staffUserId: agentUserId } : {}),
         },
         include: {
+          offerBoxPurchase: {
+            select: {
+              id: true,
+              offerSnapshot: true,
+              priceSnapshot: true,
+              user: { select: { name: true } },
+            },
+          },
           staffUser: {
             select: { id: true, name: true, email: true, role: true },
           },
@@ -182,7 +191,7 @@ export async function GET(req: Request) {
       id: `staff:${c.id}`,
       sourceType: "staff" as const,
       amount: c.amount,
-      paymentAmount: c.userMembership?.paymentAmount ?? null,
+      paymentAmount: c.offerBoxPurchase?.priceSnapshot ?? c.userMembership?.paymentAmount ?? null,
       commissionTypeSnapshot: null,
       commissionRateSnapshot: null,
       commissionBaseSnapshot: null,
@@ -190,9 +199,10 @@ export async function GET(req: Request) {
       settledAt: c.settledAt?.toISOString() ?? null,
       createdAt: c.createdAt.toISOString(),
       agentUser: c.staffUser,
-      customerName: c.userMembership?.user?.name ?? "—",
-      membershipName: c.userMembership?.membership?.name ?? "—",
+      customerName: c.offerBoxPurchase?.user?.name ?? c.userMembership?.user?.name ?? "—",
+      membershipName: getOfferBoxCommissionTitle(c.offerBoxPurchase?.offerSnapshot) ?? c.userMembership?.membership?.name ?? "—",
       membershipId: c.userMembershipId,
+      offerBoxPurchaseId: c.offerBoxPurchaseId,
     })),
 
     ...trainerCommissions.map((c) => ({

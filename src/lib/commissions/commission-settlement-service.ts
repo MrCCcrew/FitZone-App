@@ -10,6 +10,7 @@ export const COMMISSION_TYPES = [
   "trainer",
   "nutrition",
   "marketing",
+  "friend_offer",
 ] as const;
 
 export type CommissionType = (typeof COMMISSION_TYPES)[number];
@@ -27,6 +28,7 @@ export type CommissionSettlementInput = {
   paymentMethod?: string | null;
   paymentReference?: string | null;
   receiptUrl?: string | null;
+  receiptSha256?: string | null;
   notes?: string | null;
 
   requestedAt?: Date | null;
@@ -101,6 +103,11 @@ const CONFIG: Record<CommissionType, SettlementConfig> = {
    * Marketing closing commission is independent from Staff referral
    * commission, but uses the same authoritative payout boundary.
    */
+  friend_offer: {
+    table: "FriendOfferCommission",
+    openStatus: "earned",
+    beneficiaryColumn: "beneficiaryId",
+  },
   marketing: {
     table: "MarketingCommission",
     openStatus: "earned",
@@ -467,6 +474,12 @@ async function closeCommissionRows(
         },
       });
 
+    case "friend_offer":
+      return tx.friendOfferCommission.updateMany({
+        where: {id: {in: ids}, status: "earned"},
+        data: {status: "settled", settledAt},
+      });
+
     case "marketing":
       return tx.marketingCommission.updateMany({
         where: {
@@ -522,6 +535,20 @@ export async function settleCommissionsTx(
 
   if ((sourceType && !sourceId) || (!sourceType && sourceId)) {
     throw new Error("COMMISSION_SETTLEMENT_INCOMPLETE_SOURCE");
+  }
+
+  const partnerReceiptSha256 =
+    cleanOptional(rawInput.receiptSha256);
+
+  if (
+    partnerReceiptSha256 &&
+    (
+      rawInput.commissionType !== "partner" ||
+      !/^[0-9a-f]{64}$/.test(partnerReceiptSha256) ||
+      !cleanOptional(rawInput.receiptUrl)
+    )
+  ) {
+    throw new Error("PARTNER_RECEIPT_SHA256_INVALID");
   }
 
   let payoutId: string | null = null;
@@ -625,6 +652,26 @@ export async function settleCommissionsTx(
     });
 
     payoutId = payout.id;
+  }
+
+  // PARTNER_RECEIPT_SHA256_UNIQUE_CLAIM_V1
+  // Claim inside the settlement transaction. A duplicate SHA-256
+  // violates the database unique index and rolls back the payout.
+  // Use parameterized SQL to avoid regenerating Prisma in shared
+  // node_modules. Only partner settlements supplying a proof use it.
+  if (partnerReceiptSha256) {
+    const claimed = await tx.$executeRaw`
+      UPDATE \`CommissionPayout\`
+      SET \`receiptSha256\` = ${partnerReceiptSha256}
+      WHERE \`id\` = ${payoutId}
+        AND \`beneficiaryType\` = 'partner'
+        AND \`receiptUrl\` = ${cleanOptional(rawInput.receiptUrl)}
+        AND \`receiptSha256\` IS NULL
+    `;
+
+    if (claimed !== 1) {
+      throw new Error("PARTNER_RECEIPT_SHA256_CLAIM_FAILED");
+    }
   }
 
   await tx.commissionPayoutItem.createMany({

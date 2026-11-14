@@ -1,3 +1,24 @@
+{
+  const r15zaqRaw = process.env.DATABASE_URL;
+  if (!r15zaqRaw ||
+      process.env.DIRECT_URL !== r15zaqRaw ||
+      process.env.TEST_DATABASE_URL !== r15zaqRaw ||
+      process.env.APP_ENV !== "test" ||
+      process.env.NODE_ENV !== "test" ||
+      process.env.FITZONE_R13_ISOLATED_INTEGRATION !== "1") {
+    throw new Error("R15ZAQ_R13_ENVIRONMENT_REJECTED");
+  }
+  const r15zaqTarget = new URL(r15zaqRaw);
+  if (
+    r15zaqTarget.protocol !== "mysql:" ||
+    r15zaqTarget.hostname !== "127.0.0.1" ||
+    r15zaqTarget.port !== "3306" ||
+    decodeURIComponent(r15zaqTarget.username) !== "fitzone_r13_user" ||
+    r15zaqTarget.pathname !== "/fitzone_final_release_r13_test"
+  ) {
+    throw new Error("R15ZAQ_R13_DATABASE_IDENTITY_REJECTED");
+  }
+}
 import {
   afterAll,
   beforeAll,
@@ -19,18 +40,25 @@ vi.mock("@/lib/payments/service", () => ({
     mocks.updatePaymentTransactionStatus,
 }));
 
-vi.mock("@/lib/payments/providers/paymob", () => ({
-  inquirePaymobTransactionByMerchantReference:
-    mocks.inquirePaymobTransactionByMerchantReference,
-}));
+vi.mock("@/lib/payments/providers/paymob", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/payments/providers/paymob")
+  >("@/lib/payments/providers/paymob");
+
+  return {
+    ...actual,
+    inquirePaymobTransactionByMerchantReference:
+      mocks.inquirePaymobTransactionByMerchantReference,
+  };
+});
 
 import {
   GET as runPendingCleanupCron,
 } from "@/app/api/cron/cancel-pending-orders/route";
 
 import {
-  reconcilePaidOfferBoxPurchase,
-} from "@/lib/payments/offer-box-payment";
+  getPaymentProvider,
+} from "@/lib/payments/registry";
 
 const raw = process.env.DATABASE_URL;
 
@@ -48,8 +76,8 @@ if (
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !==
-    "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+    "fitzone_r13_user" ||
+  url.pathname !== "/fitzone_final_release_r13_test"
 ) {
   throw new Error(
     "REFUSING: ambiguous recovery test requires fitzone_test",
@@ -228,6 +256,16 @@ beforeAll(async () => {
             version: 1,
             testMarker:
               `${stamp}-PAID`,
+            commercial: {
+              currency: "EGP",
+              finalPrice: 100,
+            },
+            economics: {
+              commissionSnapshot: JSON.stringify({
+                version: 1,
+                capturedAt: new Date().toISOString(),
+              }),
+            },
           }),
 
         snapshotVersion: 1,
@@ -432,35 +470,27 @@ beforeEach(() => {
           );
         }
 
-        const paidAt =
-          new Date();
+        const provider = getPaymentProvider("paymob");
 
-        const updated =
-          await db.paymentTransaction.update({
-            where: {
-              id:
-                transactionId,
-            },
+        if (!provider) {
+          throw new Error("TEST_PAYMOB_PROVIDER_MISSING");
+        }
 
-            data: {
-              status: "paid",
-              paidAt,
-            },
-          });
-
-        /*
-         * Use the REAL Offer Box reconciliation helper.
-         * This proves crash-window payment linking and
-         * pending_payment -> available repair.
-         */
-        await reconcilePaidOfferBoxPurchase({
-          transactionId,
-          purchaseId:
-            paidPurchaseId,
-          paidAt,
+        // Simulate the provider's verified Order-paid result.
+        // Do not directly promote local PaymentTransaction.status.
+        vi.spyOn(provider, "verifyTransaction").mockResolvedValue({
+          status: "paid",
+          message: "Isolated recovered Paymob Order fixture",
         });
 
-        return updated;
+        const { updatePaymentTransactionStatus: realUpdate } =
+          await vi.importActual<
+            typeof import("@/lib/payments/service")
+          >("@/lib/payments/service");
+
+        // This invokes the actual central Order verification gate
+        // and then the real Offer Box reconciliation.
+        return realUpdate(transactionId, "paid");
       },
     );
 });

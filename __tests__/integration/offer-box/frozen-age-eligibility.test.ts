@@ -1,3 +1,24 @@
+{
+  const r15zaqRaw = process.env.DATABASE_URL;
+  if (!r15zaqRaw ||
+      process.env.DIRECT_URL !== r15zaqRaw ||
+      process.env.TEST_DATABASE_URL !== r15zaqRaw ||
+      process.env.APP_ENV !== "test" ||
+      process.env.NODE_ENV !== "test" ||
+      process.env.FITZONE_R13_ISOLATED_INTEGRATION !== "1") {
+    throw new Error("R15ZAQ_R13_ENVIRONMENT_REJECTED");
+  }
+  const r15zaqTarget = new URL(r15zaqRaw);
+  if (
+    r15zaqTarget.protocol !== "mysql:" ||
+    r15zaqTarget.hostname !== "127.0.0.1" ||
+    r15zaqTarget.port !== "3306" ||
+    decodeURIComponent(r15zaqTarget.username) !== "fitzone_r13_user" ||
+    r15zaqTarget.pathname !== "/fitzone_final_release_r13_test"
+  ) {
+    throw new Error("R15ZAQ_R13_DATABASE_IDENTITY_REJECTED");
+  }
+}
 import {
   afterAll,
   beforeAll,
@@ -25,8 +46,8 @@ if (
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !==
-    "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+    "fitzone_r13_user" ||
+  url.pathname !== "/fitzone_final_release_r13_test"
 ) {
   throw new Error(
     "REFUSING: Offer Box frozen age integration requires fitzone_test",
@@ -35,11 +56,24 @@ if (
 
 const mocks = vi.hoisted(() => ({
   getCurrentAppUser: vi.fn(),
+  verifyPaymobOrder: vi.fn(),
+  updatePaidStatus: vi.fn(),
+  applyOfferBoxBookingPlanTx: vi.fn(),
   applyMembershipBookingPlanTx: vi.fn(),
   applyMembershipSessionCarryoverTx: vi.fn(),
   isBlockingMembershipCarryoverReason: vi.fn(),
   lockMembershipLifecycleUserTx: vi.fn(),
   runPaidMembershipPostActivationReconciliation: vi.fn(),
+}));
+
+vi.mock("@/lib/payments/registry", () => ({
+  getPaymentProvider: () => ({
+    verifyTransaction: mocks.verifyPaymobOrder,
+  }),
+}));
+
+vi.mock("@/lib/payments/service", () => ({
+  updatePaymentTransactionStatus: mocks.updatePaidStatus,
 }));
 
 vi.mock("@/lib/app-session", () => ({
@@ -65,6 +99,8 @@ vi.mock(
 
     applyMembershipBookingPlanTx:
       mocks.applyMembershipBookingPlanTx,
+    applyOfferBoxBookingPlanTx:
+      mocks.applyOfferBoxBookingPlanTx,
   }),
 );
 
@@ -114,6 +150,9 @@ let purchaseId = "";
 
 async function cleanup() {
   if (purchaseId) {
+    await db.offerBoxEntitlement.deleteMany({
+      where: { purchaseId },
+    });
     await db.offerBoxPurchase.deleteMany({
       where: {
         id: purchaseId,
@@ -432,6 +471,20 @@ beforeAll(async () => {
   purchaseId = purchase.id;
 
   /*
+   * Preserve the existing payment and bind it to this purchase.
+   * This is isolated test fixture setup, not production logic.
+   */
+  await db.paymentTransaction.update({
+    where: { id: paymentId },
+    data: {
+      metadata: JSON.stringify({
+        testMarker: stamp,
+        offerBoxPurchaseId: purchaseId,
+      }),
+    },
+  });
+
+  /*
    * AFTER PURCHASE:
    *
    * 1) Customer profile birth date changes so the
@@ -470,12 +523,26 @@ beforeAll(async () => {
       minAgeYears: 13,
 
       maxAgeYears: 20,
+
+      // The offer changes only AFTER this purchase was paid.
+      isActive: false,
+      expiresAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
     },
   });
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
+
+  mocks.verifyPaymobOrder.mockResolvedValue({
+    status: "paid",
+  });
+
+  mocks.updatePaidStatus.mockResolvedValue(undefined);
+
+  mocks.applyOfferBoxBookingPlanTx.mockResolvedValue({
+    bookedSchedules: [],
+  });
 
   mocks.getCurrentAppUser
     .mockResolvedValue({
@@ -514,6 +581,74 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
+  /*
+   * Isolated fixture cleanup: remove only the journal created
+   * for this test's Offer Box purchase, never arbitrary journals.
+   */
+  if (purchaseId) {
+    await db.$transaction(async (tx) => {
+      const journals = await tx.journal.findMany({
+        where: {
+          referenceType: "OfferBoxPurchase",
+          referenceId: purchaseId,
+        },
+      });
+
+      if (journals.length > 1) {
+        throw new Error("FROZEN_AGE_UNEXPECTED_JOURNALS");
+      }
+
+      if (journals.length === 1) {
+        const journal = journals[0];
+        const entries = await tx.journalEntry.findMany({
+          where: { journalId: journal.id },
+        });
+
+        const debit = entries.find(
+          (entry) =>
+            entry.accountId === "gl-1030" &&
+            Number(entry.debit) === 100 &&
+            Number(entry.credit) === 0 &&
+            entry.description === "Offer Box payment collected via Paymob",
+        );
+
+        const credit = entries.find(
+          (entry) =>
+            Number(entry.debit) === 0 &&
+            Number(entry.credit) === 100 &&
+            entry.description ===
+              "Independent Offer Box club-service revenue",
+        );
+
+        if (
+          journal.status !== "posted" ||
+          journal.reversalJournalId !== null ||
+          entries.length !== 2 ||
+          !debit ||
+          !credit ||
+          debit.id === credit.id
+        ) {
+          throw new Error("FROZEN_AGE_JOURNAL_IDENTITY_MISMATCH");
+        }
+
+        const removed = await tx.journalEntry.deleteMany({
+          where: {
+            journalId: journal.id,
+            id: { in: [debit.id, credit.id] },
+          },
+        });
+
+        if (removed.count !== 2) {
+          throw new Error("FROZEN_AGE_ENTRY_CLEANUP_MISMATCH");
+        }
+
+        await tx.journal.delete({
+          where: { id: journal.id },
+        });
+      }
+    });
+  }
+
   await cleanup();
   await db.$disconnect();
 });
@@ -547,6 +682,8 @@ describe(
                 requiresBirthDate: true,
                 minAgeYears: true,
                 maxAgeYears: true,
+                isActive: true,
+                expiresAt: true,
 
                 offerBoxReservedCount:
                   true,
@@ -559,6 +696,11 @@ describe(
         expect(
           userBefore.birthDate,
         ).toBeInstanceOf(Date);
+
+        // The purchased right must survive live offer deactivation.
+        expect(offerBefore.isActive).toBe(false);
+        expect(offerBefore.expiresAt).toBeInstanceOf(Date);
+        expect(offerBefore.expiresAt.getTime()).toBeLessThan(Date.now());
 
         expect(
           offerBefore.requiresBirthDate,
@@ -628,6 +770,7 @@ describe(
                   JSON.stringify({
                     purchaseId,
 
+                    confirmed: true,
                     scheduleIds: [],
                   }),
               },
@@ -650,9 +793,9 @@ describe(
           body.alreadyRedeemed,
         ).toBe(false);
 
-        expect(
-          typeof body.membership?.id,
-        ).toBe("string");
+        expect(body.redemptionType).toBe("independent");
+        expect(body.membership).toBeNull();
+        expect(typeof body.entitlement?.id).toBe("string");
 
         const purchaseAfter =
           await db.offerBoxPurchase
@@ -666,11 +809,7 @@ describe(
           purchaseAfter.status,
         ).toBe("redeemed");
 
-        expect(
-          purchaseAfter.redeemedUserMembershipId,
-        ).toBe(
-          body.membership.id,
-        );
+        expect(purchaseAfter.redeemedUserMembershipId).toBeNull();
 
         const offerAfter =
           await db.offer
@@ -706,38 +845,21 @@ describe(
           offerAfter.currentSubscribers,
         ).toBe(1);
 
-        const activated =
-          await db.userMembership
-            .findUniqueOrThrow({
-              where: {
-                id:
-                  body.membership.id,
-              },
-            });
+        const entitlement = await db.offerBoxEntitlement.findUniqueOrThrow({
+          where: { purchaseId },
+        });
+
+        expect(entitlement.id).toBe(body.entitlement.id);
+        expect(entitlement.userId).toBe(userId);
+        expect(entitlement.status).toBe("active");
 
         expect(
-          activated.status,
-        ).toBe("active");
+          await db.userMembership.count({ where: { userId } }),
+        ).toBe(0);
 
-        expect(
-          activated.userId,
-        ).toBe(userId);
+        expect(mocks.applyMembershipBookingPlanTx).not.toHaveBeenCalled();
 
-        expect(
-          activated.membershipId,
-        ).toBe(membershipId);
-
-        expect(
-          activated.offerId,
-        ).toBe(offerId);
-
-        expect(
-          mocks.applyMembershipBookingPlanTx,
-        ).toHaveBeenCalledTimes(1);
-
-        expect(
-          mocks.runPaidMembershipPostActivationReconciliation,
-        ).toHaveBeenCalledTimes(1);
+        expect(mocks.runPaidMembershipPostActivationReconciliation).not.toHaveBeenCalled();
 
         console.log(
           "AGE_AT_PURCHASE=25",

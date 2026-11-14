@@ -1,4 +1,6 @@
 "use client";
+import PinkFridayPopup, { type PinkFridayOffer } from "@/components/PinkFridayPopup";
+import { createPortal as createStudentOfferPortal } from "react-dom";
 import {
   useCallback,
   useEffect,
@@ -2994,6 +2996,7 @@ type PublicOffer = {
 type FriendOfferGroupView = {
   id: string;
   token: string;
+  individualInvitesEnabled: boolean;
   status: string;
   expiresAt: string;
   requiredMembers: number;
@@ -3015,6 +3018,7 @@ type FriendOfferGroupView = {
     sessionsCount: number | null;
     durationDays: number | null;
     expiresAt: string;
+    requiresEgyptianNationalId: boolean;
   };
 };
 
@@ -4603,12 +4607,279 @@ async function getOfferBoxPending(
   return result;
 }
 
+
+// FITZONE_OFFER_BOX_STUDENT_MODAL_V2
+function OfferBoxStudentAgeDialog({
+  offer,
+  lang,
+  onResolve,
+}: {
+  offer: PublicOffer;
+  lang: string;
+  onResolve: (value: string | null) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
+
+  const verify = async () => {
+    if (busyRef.current) return;
+
+    const nationalId = value.trim();
+
+    if (!/^[0-9٠-٩۰-۹]{14}$/.test(nationalId)) {
+      setError(
+        lang === "en"
+          ? "Egyptian national ID must contain 14 digits."
+          : "الرقم القومي المصري يجب أن يتكون من 14 رقمًا.",
+      );
+      return;
+    }
+
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/offers/student-age-check", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offerId: offer.id,
+          egyptianNationalId: nationalId,
+        }),
+      });
+
+      const result = (await response.json().catch(() => null)) as {
+        eligible?: boolean;
+        error?: string;
+      } | null;
+
+      if (!response.ok || result?.eligible !== true) {
+        setError(
+          result?.error ||
+            (lang === "en"
+              ? "Unable to verify age. Please try again."
+              : "تعذر التحقق من السن. حاولي مرة أخرى."),
+        );
+        return;
+      }
+
+      // The actual checkout validates eligibility again.
+      onResolve(nationalId);
+    } catch {
+      setError(
+        lang === "en"
+          ? "Could not reach the verification service."
+          : "تعذر الاتصال بخدمة التحقق.",
+      );
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  if (typeof document === "undefined") return null;
+
+  return createStudentOfferPortal(
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 100000,
+        background: "rgba(0,0,0,.72)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-label={
+          lang === "en"
+            ? "Student age verification"
+            : "التحقق من سن عرض الطلبة"
+        }
+        onSubmit={(event) => {
+          event.preventDefault();
+          void verify();
+        }}
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          padding: 24,
+          borderRadius: 18,
+          background: "#fff",
+          color: "#111827",
+          fontFamily: "'Cairo', sans-serif",
+          boxShadow: "0 18px 60px rgba(0,0,0,.35)",
+        }}
+      >
+        <h3 style={{ margin: "0 0 12px", color: "#111827" }}>
+          {lang === "en"
+            ? "Student offer age verification"
+            : "التحقق من السن لعرض الطلبة"}
+        </h3>
+
+        <p style={{ color: "#374151", lineHeight: 1.8 }}>
+          {lang === "en"
+            ? "Enter your Egyptian national ID before checkout."
+            : "أدخلي الرقم القومي المصري للتحقق من السن قبل متابعة الدفع."}
+        </p>
+
+        <label style={{ display: "block", fontWeight: 700 }}>
+          {lang === "en"
+            ? "Egyptian national ID"
+            : "الرقم القومي (14 رقمًا)"}
+
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={14}
+            autoComplete="off"
+            autoFocus
+            value={value}
+            disabled={busy}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setError(null);
+            }}
+            style={{
+              display: "block",
+              boxSizing: "border-box",
+              width: "100%",
+              marginTop: 8,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1px solid #9ca3af",
+              background: "#fff",
+              color: "#111827",
+              fontSize: 16,
+              direction: "ltr",
+            }}
+          />
+        </label>
+
+        <p style={{
+          color: "#4b5563",
+          fontSize: 12,
+          lineHeight: 1.7,
+        }}>
+          {lang === "en"
+            ? "Used only to verify age. The full ID is not stored in the order."
+            : "يُستخدم للتحقق من السن فقط، ولن يُحفظ الرقم كاملًا داخل الطلب."}
+        </p>
+
+        {error && (
+          <div
+            role="alert"
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              background: "#FEF2F2",
+              color: "#991B1B",
+              marginBottom: 12,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div style={{
+          display: "flex",
+          gap: 10,
+          marginTop: 18,
+        }}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onResolve(null)}
+            style={{
+              flex: 1,
+              padding: 12,
+              background: "#fff",
+              color: "#374151",
+              border: "1px solid #9ca3af",
+              borderRadius: 10,
+            }}
+          >
+            {lang === "en" ? "Cancel" : "إلغاء"}
+          </button>
+
+          <button
+            type="submit"
+            disabled={busy || !value.trim()}
+            style={{
+              flex: 1,
+              padding: 12,
+              background: "#166534",
+              color: "#fff",
+              border: 0,
+              borderRadius: 10,
+              fontWeight: 700,
+            }}
+          >
+            {busy
+              ? (lang === "en" ? "Verifying..." : "جارٍ التحقق...")
+              : (lang === "en" ? "Verify & continue" : "تحقق ومتابعة")}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
 function useOfferBoxCheckout(summary: UserSummary | null) {
   const { lang } = useLang();
   const [offerBoxBusyId, setOfferBoxBusyId] = useState<string | null>(null);
   const [offerBoxError, setOfferBoxError] =
     useState<OfferBoxCheckoutError | null>(null);
   const offerBoxInFlight = useRef(false);
+  const [studentAgeOffer, setStudentAgeOffer] =
+    useState<PublicOffer | null>(null);
+
+  const studentAgeResolver =
+    useRef<((value: string | null) => void) | null>(null);
+
+  useEffect(() => () => {
+    studentAgeResolver.current?.(null);
+    studentAgeResolver.current = null;
+  }, []);
+
+  const finishStudentAge = (value: string | null) => {
+    const resolve = studentAgeResolver.current;
+    studentAgeResolver.current = null;
+    setStudentAgeOffer(null);
+    resolve?.(value);
+  };
+
+  const requestStudentAge = (
+    offer: PublicOffer,
+  ): Promise<string | null> =>
+    new Promise((resolve) => {
+      if (studentAgeResolver.current) {
+        resolve(null);
+        return;
+      }
+
+      studentAgeResolver.current = resolve;
+      setStudentAgeOffer(offer);
+    });
+
+  const offerBoxAgeDialog = studentAgeOffer ? (
+    <OfferBoxStudentAgeDialog
+      offer={studentAgeOffer}
+      lang={lang}
+      onResolve={finishStudentAge}
+    />
+  ) : null;
+
 
   const reportError = (offerId: string, message: string) => {
     setOfferBoxError({ offerId, message });
@@ -4692,17 +4963,11 @@ function useOfferBoxCheckout(summary: UserSummary | null) {
       }
 
       let egyptianNationalId: string | undefined;
+
       if (offer.requiresEgyptianNationalId) {
-        const entered = window.prompt(
-          lang === "en"
-            ? "Enter your 14-digit Egyptian national ID to verify age for this student offer. The full ID will not be saved."
-            : "أدخلي الرقم القومي المصري (14 رقمًا) للتحقق من عمر عرض الطلبة. لن يُحفظ الرقم كاملًا في الطلب.",
-        );
-        if (entered === null) return;
-        egyptianNationalId = entered.trim();
-        if (!/^[0-9٠-٩۰-۹]{14}$/.test(egyptianNationalId)) {
-          throw new Error("الرقم القومي يجب أن يتكون من 14 رقمًا.");
-        }
+        const verifiedId = await requestStudentAge(offer);
+        if (verifiedId === null) return;
+        egyptianNationalId = verifiedId;
       }
 
       const response = await fetch("/api/offer-box/checkout", {
@@ -4813,6 +5078,8 @@ function useOfferBoxCheckout(summary: UserSummary | null) {
     purchaseOfferBox,
     offerBoxBusyId,
     offerBoxError,
+    offerBoxAgeDialog,
+    offerBoxAgeDialogId: studentAgeOffer?.id ?? null,
   };
 }
 const HomePage = ({
@@ -4834,7 +5101,68 @@ const HomePage = ({
   const offerClock = useHydratedOfferClock();
   const { lang } = useLang();
   const t = useT();
-  const { purchaseOfferBox, offerBoxBusyId, offerBoxError } = useOfferBoxCheckout(summary);
+  const {
+    purchaseOfferBox,
+    offerBoxBusyId,
+    offerBoxError,
+    offerBoxAgeDialog,
+    offerBoxAgeDialogId,
+  } = useOfferBoxCheckout(summary);
+  useEffect(() => {
+    const handlePinkFridaySelection = (event: Event) => {
+      const selected = (event as CustomEvent<PinkFridayOffer>).detail;
+
+      if (!selected?.offerId) return;
+
+      if (selected.kind === "friend_offer") {
+        window.sessionStorage.setItem(
+          "fitzone_friend_offer_pending",
+          JSON.stringify({
+            kind: "open",
+            offerId: selected.offerId,
+          }),
+        );
+        navigate("offers");
+        return;
+      }
+
+      if (selected.kind === "offer_box") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("offerBox", selected.offerId);
+        window.history.replaceState(
+          window.history.state,
+          "",
+          url.toString(),
+        );
+        navigate("offers");
+        return;
+      }
+
+      if (
+        selected.kind === "membership_offer" &&
+        selected.membershipId
+      ) {
+        startMembershipFlow(
+          selected.membershipId,
+          "offer",
+          selected.offerId,
+          selected.pricingSource.specialPrice,
+        );
+      }
+    };
+
+    window.addEventListener(
+      "fitzone-pink-friday-offer-selected",
+      handlePinkFridaySelection,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "fitzone-pink-friday-offer-selected",
+        handlePinkFridaySelection,
+      );
+    };
+  }, [navigate]);
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
     const onVisible = () => {
@@ -5963,9 +6291,7 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
-                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                                ? t("بدون خصم إضافي", "No extra discount")
-                              : offer.type === "percentage"
+                              :  offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
                           </span>
@@ -5989,9 +6315,7 @@ const HomePage = ({
                           >
                             {isSpecial
                               ? t("عرض خاص", "Special")
-                              : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                                ? t("بدون خصم إضافي", "No extra discount")
-                              : offer.type === "percentage"
+                              :  offer.type === "percentage"
                                 ? `${offer.discount}% ${t("خصم", "off")}`
                                 : t("عرض", "Offer")}
                           </span>
@@ -6022,9 +6346,7 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? formatCurrency(offer.specialPrice ?? 0)
-                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                              ? t("السعر الحالي", "Current price")
-                            : offer.type === "percentage"
+                            :  offer.type === "percentage"
                               ? `${offer.discount}%`
                               : `${offer.discount} ${t("ج.م", "EGP")}`}
                         </div>
@@ -6037,9 +6359,7 @@ const HomePage = ({
                         >
                           {isSpecial
                             ? t("سعر العرض", "Offer price")
-                            : offer.offerBoxEnabled && !offer.offerBoxApplyDiscount
-                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
-                            : t("قيمة الخصم", "Discount value")}
+                            :  t("قيمة الخصم", "Discount value")}
                         </div>
                         <h3
                           style={{
@@ -6199,10 +6519,6 @@ const HomePage = ({
                               return;
                             }
 
-                            if (offer.offerBoxEnabled) {
-                  void purchaseOfferBox(offer);
-                  return;
-                }
                 startMembershipFlow(
                               offer.membershipId,
                               "offer",
@@ -6212,14 +6528,31 @@ const HomePage = ({
                           }}
                           disabled={cd.expired || (offer.offerBoxEnabled && offerBoxBusyId !== null)}
                         >
-                          {cd.expired
-                            ? t("انتهى العرض", "Ended")
-                            : offer.offerBoxEnabled && offerBoxBusyId === offer.id
-    ? t("جاري تجهيز الدفع...", "Preparing payment...")
-    : offer.offerBoxEnabled
-      ? t("شراء العرض", "Buy offer")
-      : t("اشتركي الآن", "Join now")}
+                          {cd.expired ? t("انتهى العرض", "Ended") : t("اشتركي الآن", "Join now")}
                         </button>
+
+        {offer.offerBoxEnabled && !offer.friendOfferEnabled && (
+          <button
+            type="button"
+            className="btn-outline"
+            data-offer-box-id={offer.id}
+            onClick={() => void purchaseOfferBox(offer)}
+            disabled={cd.expired || offerBoxBusyId !== null}
+            style={{
+              width: "100%",
+              justifyContent: "center",
+              marginTop: 8,
+              fontSize: 12,
+              borderColor: accentColor,
+              color: accentColor,
+              opacity: cd.expired ? 0.65 : 1,
+            }}
+          >
+            {offerBoxBusyId === offer.id
+              ? t("جاري تجهيز الدفع...", "Preparing payment...")
+              : t("احفظيه في صندوق العروض", "Save in Offer Box")}
+          </button>
+        )}
         {offer.offerBoxEnabled &&
           offerBoxError?.offerId === offer.id && (
             <div
@@ -6239,6 +6572,7 @@ const HomePage = ({
               {offerBoxError.message}
             </div>
           )}
+        {offerBoxAgeDialogId === offer.id && offerBoxAgeDialog}
                       </div>
                     </div>
                   );
@@ -10416,6 +10750,14 @@ const MembershipsPage = ({
   const [dobError, setDobError] = useState<string | null>(null);
   const [checkoutPreview, setCheckoutPreview] =
     useState<MembershipCheckoutPreview | null>(null);
+  // Display-only snapshot of the exact schedules selected at checkout.
+  const [checkoutPreviewScheduleDetails, setCheckoutPreviewScheduleDetails] =
+    useState<Array<{
+      id: string;
+      day: string;
+      time: string;
+      className: string;
+    }>>([]);
 
   const [membershipTrainers, setMembershipTrainers] = useState<PublicTrainer[]>(
     [],
@@ -11561,11 +11903,35 @@ const MembershipsPage = ({
     };
   };
 
+  const checkoutScheduleDetailsMatch = (
+    scheduleIds: string[],
+    details: Array<{ id: string }>,
+  ) =>
+    scheduleIds.length === details.length &&
+    new Set(scheduleIds).size === scheduleIds.length &&
+    scheduleIds.every((id, index) => details[index]?.id === id);
+
   const checkoutOptionsRequestSequenceRef = useRef(0);
 
   const openCheckoutPreview = (plan: PlanItem, scheduleIds: string[] = []) => {
     const checkoutOptionsRequestSequence =
       ++checkoutOptionsRequestSequenceRef.current;
+    const selectedDetails = scheduleIds.flatMap((id) => {
+      const match = scheduleChoices.find((choice) => choice.id === id);
+      return match
+        ? [{ id, day: match.day, time: match.time, className: match.className }]
+        : [];
+    });
+    if (!checkoutScheduleDetailsMatch(scheduleIds, selectedDetails)) {
+      console.warn(
+        "[CHECKOUT_SCHEDULE_PREVIEW] Some selected schedules could not be displayed",
+        {
+          selectedCount: scheduleIds.length,
+          displayedCount: selectedDetails.length,
+        },
+      );
+    }
+    setCheckoutPreviewScheduleDetails(selectedDetails);
     setCheckoutPreview({ plan, scheduleIds, confirmed: false });
 
     // Coach selection is checkout-specific and must never leak across plans.
@@ -11691,11 +12057,40 @@ const MembershipsPage = ({
       return;
     }
 
+    // Student offers: collect age evidence before attempting checkout.
+    // Ordinary offers and ordinary friend offers remain unaffected.
+    if (
+      plan.offerId &&
+      plan.requiresEgyptianNationalId === true &&
+      !egyptianNationalId
+    ) {
+      setDobModal({
+        plan,
+        scheduleIds,
+        paymentOverride,
+        coachMembershipTrainerId:
+          plan.coachMembershipEnabled === true
+            ? (coachMembershipTrainerId ?? null)
+            : null,
+      });
+      setDobBirthDate("");
+      setDobError(null);
+      return;
+    }
+
     setSubscribing(plan.id ?? plan.offerId ?? "offer-subscribe");
     setSubMsg(null);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
+    // Preserve one attempt across network timeout/retry; clear only on a successful response.
+    const attemptKey = "fitzone:commercial-attempt:" + (plan.offerId ?? plan.id ?? "unknown");
+    let commercialAttemptId: string | null = null;
     try {
+      commercialAttemptId = sessionStorage.getItem(attemptKey);
+      if (!commercialAttemptId && typeof crypto?.randomUUID === "function") {
+        commercialAttemptId = crypto.randomUUID();
+        sessionStorage.setItem(attemptKey, commercialAttemptId);
+      }
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -11710,6 +12105,7 @@ const MembershipsPage = ({
             );
             return {
               membershipId: plan.id,
+              commercialAttemptId,
               scheduleIds,
               paymentMethod: paymentOverride ?? membershipPayMethod,
               discountCode: discountResult
@@ -11804,6 +12200,7 @@ const MembershipsPage = ({
         }
         return;
       }
+      sessionStorage.removeItem(attemptKey);
       sessionStorage.removeItem("fitzone:member-benefit-code");
       sessionStorage.removeItem("fitzone:partner-code");
       localStorage.removeItem("fitzone:affiliate-ref");
@@ -11839,21 +12236,85 @@ const MembershipsPage = ({
 
     if (dobModal.plan.requiresEgyptianNationalId) {
       const egyptianNationalId = dobBirthDate.trim();
+
       if (!/^[0-9٠-٩۰-۹]{14}$/.test(egyptianNationalId)) {
-        setDobError(t("الرقم القومي المصري يجب أن يتكون من 14 رقمًا.", "Egyptian national ID must contain 14 digits."));
+        setDobError(
+          t(
+            "الرقم القومي المصري يجب أن يتكون من 14 رقمًا.",
+            "Egyptian national ID must contain 14 digits.",
+          ),
+        );
         return;
       }
-      const pending = dobModal;
-      setDobModal(null);
-      setDobBirthDate("");
-      setDobError(null);
-      setTimeout(() => {
-        void handleSubscribe(
-          pending.plan, pending.scheduleIds,
-          pending.paymentOverride, pending.coachMembershipTrainerId ?? null,
-          egyptianNationalId,
+
+      if (!dobModal.plan.offerId) {
+        setDobError(
+          t(
+            "تعذر تحديد عرض الطلبة. يرجى إعادة اختيار العرض.",
+            "Student offer could not be identified. Please select it again.",
+          ),
         );
-      }, 0);
+        return;
+      }
+
+      setDobSaving(true);
+      setDobError(null);
+
+      try {
+        const response = await fetch("/api/offers/student-age-check", {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            offerId: dobModal.plan.offerId,
+            egyptianNationalId,
+          }),
+        });
+
+        const result = (await response.json().catch(() => null)) as {
+          eligible?: boolean;
+          error?: string;
+        } | null;
+
+        if (!response.ok || result?.eligible !== true) {
+          setDobError(
+            result?.error ||
+              t(
+                "تعذر التحقق من العمر حاليًا. حاولي مرة أخرى.",
+                "Unable to verify age right now. Please try again.",
+              ),
+          );
+          return;
+        }
+
+        const pending = dobModal;
+
+        setDobModal(null);
+        setDobBirthDate("");
+        setDobError(null);
+
+        // Server-side checkout verifies eligibility again.
+        setTimeout(() => {
+          void handleSubscribe(
+            pending.plan,
+            pending.scheduleIds,
+            pending.paymentOverride,
+            pending.coachMembershipTrainerId ?? null,
+            egyptianNationalId,
+          );
+        }, 0);
+      } catch {
+        setDobError(
+          t(
+            "تعذر الاتصال بخدمة التحقق. حاولي مرة أخرى.",
+            "Could not reach the verification service. Please retry.",
+          ),
+        );
+      } finally {
+        setDobSaving(false);
+      }
+
       return;
     }
 
@@ -13766,6 +14227,66 @@ const MembershipsPage = ({
                         >
                           {checkoutPreview.scheduleIds.length}{" "}
                           {t("مواعيد مختارة", "selected slots")}
+                          {!checkoutScheduleDetailsMatch(checkoutPreview.scheduleIds, checkoutPreviewScheduleDetails) && (
+                            <div
+                              role="alert"
+                              style={{
+                                marginTop: 8,
+                                color: "#fca5a5",
+                                fontSize: 12,
+                              }}
+                            >
+                              {t(
+                                "تعذر عرض تفاصيل بعض المواعيد المختارة. يرجى الرجوع لاختيار المواعيد مرة أخرى.",
+                                "Some selected schedule details are unavailable. Please return and select your schedules again.",
+                              )}
+                            </div>
+                          )}
+                          {checkoutPreviewScheduleDetails.length > 0 && (
+                            <div
+                              style={{
+                                marginTop: 12,
+                                padding: 12,
+                                borderRadius: 12,
+                                background: "rgba(255,255,255,0.04)",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  color: C.white,
+                                  fontWeight: 800,
+                                  marginBottom: 10,
+                                }}
+                              >
+                                {t(
+                                  "أيام ومواعيد حضورك المختارة",
+                                  "Your selected attendance days and times",
+                                )}
+                              </div>
+                              {checkoutPreviewScheduleDetails.map((item) => (
+                                <div
+                                  key={item.id}
+                                  style={{
+                                    padding: "7px 0",
+                                    borderBottom: "1px solid rgba(255,255,255,0.07)",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <span style={{ color: C.white }}>
+                                    {item.day} — {item.className}
+                                  </span>
+                                  <span style={{ color: "#D4AF37" }}>
+                                    {formatScheduleTimeLabel(item.time)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ) : null}
                     </div>
@@ -13971,7 +14492,7 @@ const MembershipsPage = ({
                       style={{
                         padding: "14px 16px",
                         marginBottom: 14,
-                        background: "rgba(245,158,11,.09)",
+                        background: "rgba(254,243,199,.92)",
                         border: "1px solid rgba(245,158,11,.3)",
                       }}
                     >
@@ -13990,7 +14511,7 @@ const MembershipsPage = ({
                       </div>
                       <div
                         style={{
-                          color: "#fde68a",
+                          color: "#92400e",
                           fontSize: 12,
                           lineHeight: 1.7,
                         }}
@@ -14129,7 +14650,11 @@ const MembershipsPage = ({
                           current ? { ...current, confirmed: true } : current,
                         )
                       }
-                      disabled={carryoverPreview?.blocking === true}
+                      disabled={
+                        carryoverPreview?.blocking === true ||
+                        (checkoutPreview.scheduleIds.length > 0 &&
+                          !checkoutScheduleDetailsMatch(checkoutPreview.scheduleIds, checkoutPreviewScheduleDetails))
+                      }
                     >
                       {t("تأكيد الاشتراك", "Confirm subscription")}
                     </button>
@@ -14527,7 +15052,7 @@ const MembershipsPage = ({
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 42, marginBottom: 8 }}>🎂</div>
+            <div style={{ fontSize: 42, marginBottom: 8 }}>🪪</div>
 
             <h3
               style={{
@@ -14629,7 +15154,7 @@ const MembershipsPage = ({
                   borderRadius: 10,
                   border: `1px solid ${C.border}`,
                   background: "#fff",
-                  color: C.white,
+                  color: "#111827",
                   fontSize: 15,
                   outline: "none",
                   direction: "ltr",
@@ -16099,7 +16624,13 @@ const OffersPage = ({
 }) => {
   const offerClock = useHydratedOfferClock();
   const t = useT();
-  const { purchaseOfferBox, offerBoxBusyId, offerBoxError } = useOfferBoxCheckout(summary);
+  const {
+    purchaseOfferBox,
+    offerBoxBusyId,
+    offerBoxError,
+    offerBoxAgeDialog,
+    offerBoxAgeDialogId,
+  } = useOfferBoxCheckout(summary);
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   useEffect(() => {
@@ -16138,6 +16669,11 @@ const OffersPage = ({
   const [friendBusy, setFriendBusy] = useState(false);
   const [friendError, setFriendError] = useState("");
   const [friendCopied, setFriendCopied] = useState(false);
+  const [friendIndividualLink, setFriendIndividualLink] = useState<{
+    id: string; token: string
+  } | null>(null);
+  const [friendStudentNationalId, setFriendStudentNationalId] =
+    useState("");
   const [friendCarryoverPreview, setFriendCarryoverPreview] =
     useState<FriendOfferCarryoverPreview | null>(null);
   const [friendCarryoverPreviewToken, setFriendCarryoverPreviewToken] =
@@ -16149,8 +16685,46 @@ const OffersPage = ({
 
   const FRIEND_PENDING_KEY = "fitzone_friend_offer_pending";
 
+  const friendGoToLogin = (token?: string) => {
+    const destination = new URL("/?page=offers", window.location.origin);
+    if (token) destination.searchParams.set("friendOffer", token);
+    window.location.assign(
+      `/login?callbackUrl=${encodeURIComponent(
+        destination.pathname + destination.search,
+      )}`,
+    );
+  };
+
+
+  const issueSingleFriendInvite = async (groupId: string) => {
+    const response = await fetch("/api/me/friend-offers/invitations", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.invitation?.token) {
+      throw new Error(payload.error ?? "تعذر إنشاء رابط الدعوة.");
+    }
+    const result = payload.invitation as { id: string; token: string };
+    setFriendIndividualLink(result);
+    return result;
+  };
+
+  const cancelSingleFriendInvite = async (groupId: string) => {
+    if (!friendIndividualLink) return;
+    if (!window.confirm(t("إلغاء رابط الدعوة المعلقة؟", "Cancel this pending invitation?"))) return;
+    const response = await fetch("/api/me/friend-offers/invitations", {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId, invitationId: friendIndividualLink.id }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? "تعذر إلغاء الدعوة.");
+    setFriendIndividualLink(null);
+    setFriendCopied(false);
+  };
+
   const friendInviteUrl = (token: string) => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined" || !token) return "";
 
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set("page", "offers");
@@ -16183,6 +16757,8 @@ const OffersPage = ({
     setFriendGroup(null);
     setFriendError("");
     setFriendCopied(false);
+    setFriendIndividualLink(null);
+    setFriendStudentNationalId("");
     setFriendCarryoverPreview(null);
     setFriendCarryoverPreviewToken(null);
     setFriendCarryoverPreviewFailed(false);
@@ -16212,7 +16788,20 @@ const OffersPage = ({
         }),
       );
 
-      navigate("login");
+      friendGoToLogin();
+      return;
+    }
+
+    const studentId = offer.requiresEgyptianNationalId
+      ? friendStudentNationalId.trim()
+      : undefined;
+
+    if (offer.requiresEgyptianNationalId &&
+        !/^[0-9٠-٩۰-۹]{14}$/.test(studentId ?? "")) {
+      setFriendError(
+        t("أدخلي الرقم القومي المصري المكون من 14 رقمًا.",
+          "Enter your 14-digit Egyptian national ID."),
+      );
       return;
     }
 
@@ -16227,6 +16816,7 @@ const OffersPage = ({
           action: "create",
           offerId: offer.id,
           matchingEnabled,
+          ...(studentId ? { egyptianNationalId: studentId } : {}),
         }),
       });
 
@@ -16247,6 +16837,19 @@ const OffersPage = ({
       }
 
       setFriendGroup(data.group);
+      setFriendIndividualLink(null);
+      setFriendStudentNationalId("");
+      const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
+      if (saved) {
+        try {
+          const pending = JSON.parse(saved);
+          if (pending.kind === "create" && pending.offerId === offer.id) {
+            window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
+          }
+        } catch {
+          // Invalid pending state is not a payment or group failure.
+        }
+      }
     } catch (error) {
       setFriendError(
         error instanceof Error
@@ -16258,7 +16861,10 @@ const OffersPage = ({
     }
   };
 
-  const loadOrJoinFriendGroup = async (token: string) => {
+  const loadOrJoinFriendGroup = async (
+    token: string,
+    joinRequested = false,
+  ) => {
     setFriendBusy(true);
     setFriendError("");
 
@@ -16281,13 +16887,32 @@ const OffersPage = ({
 
       let group = data as FriendOfferGroupView;
 
-      if (summary?.authenticated && !group.currentParticipant) {
+      if (
+        summary?.authenticated &&
+        !group.currentParticipant &&
+        (!group.offer.requiresEgyptianNationalId || joinRequested)
+      ) {
+        const joinStudentId = group.offer.requiresEgyptianNationalId
+          ? friendStudentNationalId.trim()
+          : undefined;
+
+        if (group.offer.requiresEgyptianNationalId &&
+            !/^[0-9٠-٩۰-۹]{14}$/.test(joinStudentId ?? "")) {
+          throw new Error(
+            t("أدخلي الرقم القومي المصري المكون من 14 رقمًا.",
+              "Enter your 14-digit Egyptian national ID."),
+          );
+        }
+
         response = await fetch("/api/friend-offers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "join",
             token,
+            ...(joinStudentId
+              ? { egyptianNationalId: joinStudentId }
+              : {}),
           }),
         });
 
@@ -16308,9 +16933,24 @@ const OffersPage = ({
         }
 
         group = joined.group;
+        setFriendStudentNationalId("");
       }
 
       setFriendGroup(group);
+      setFriendIndividualLink(null);
+      if (group.currentParticipant) {
+        const saved = window.sessionStorage.getItem(FRIEND_PENDING_KEY);
+        if (saved) {
+          try {
+            const pending = JSON.parse(saved);
+            if (pending.kind === "join" && pending.token === token) {
+              window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
+            }
+          } catch {
+            // Invalid pending state is not a payment or group failure.
+          }
+        }
+      }
 
       setFriendOffer(
         (current) =>
@@ -16336,6 +16976,8 @@ const OffersPage = ({
             sessionsCount: group.offer.sessionsCount,
             friendOfferEnabled: true,
             friendRequiredMembers: group.requiredMembers,
+            requiresEgyptianNationalId:
+              group.offer.requiresEgyptianNationalId,
           },
       );
     } catch (error) {
@@ -16398,7 +17040,43 @@ const OffersPage = ({
         }),
       );
 
-      navigate("login");
+      friendGoToLogin(friendGroup.token);
+      return;
+    }
+
+    // The full group must exist before payment preparation.
+    // The server independently rechecks under a database lock.
+    if (
+      friendGroup.remainingPlaces > 0 ||
+      friendGroup.status !== "ready" ||
+      !friendGroup.ready
+    ) {
+      setFriendError(
+        t(
+          friendGroup.remainingPlaces > 0
+            ? `المجموعة ناقصها ${friendGroup.remainingPlaces} صديقات. كمّلي العدد أولًا قبل الدفع.`
+            : "المجموعة غير جاهزة للدفع حاليًا.",
+          friendGroup.remainingPlaces > 0
+            ? `Your group needs ${friendGroup.remainingPlaces} more friend(s) before payment.`
+            : "The group is not ready for payment.",
+        ),
+      );
+      return;
+    }
+
+    const checkoutStudentId =
+      friendGroup.offer.requiresEgyptianNationalId
+        ? friendStudentNationalId.trim()
+        : undefined;
+
+    if (
+      friendGroup.offer.requiresEgyptianNationalId &&
+      !/^[0-9٠-٩۰-۹]{14}$/.test(checkoutStudentId ?? "")
+    ) {
+      setFriendError(
+        t("أدخلي الرقم القومي المصري قبل إتمام الدفع.",
+          "Enter your Egyptian national ID before payment."),
+      );
       return;
     }
 
@@ -16444,6 +17122,9 @@ const OffersPage = ({
           token: friendGroup.token,
           returnUrl: returnUrl.toString(),
           cancelUrl: cancelUrl.toString(),
+          ...(checkoutStudentId
+            ? { egyptianNationalId: checkoutStudentId }
+            : {}),
         }),
       });
 
@@ -16460,6 +17141,7 @@ const OffersPage = ({
         );
       }
 
+      setFriendStudentNationalId("");
       window.location.href = data.checkoutUrl;
     } catch (error) {
       setFriendError(
@@ -16561,12 +17243,11 @@ const OffersPage = ({
         token?: string;
       };
 
-      window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
-
       if (pending.kind === "open" && pending.offerId) {
         const offer = offers.find((item) => item.id === pending.offerId);
 
         if (offer?.friendOfferEnabled) {
+          window.sessionStorage.removeItem(FRIEND_PENDING_KEY);
           openFriendOffer(offer);
         }
 
@@ -16667,6 +17348,7 @@ const OffersPage = ({
                   setFriendOffer(null);
                   setFriendGroup(null);
                   setFriendError("");
+                  setFriendStudentNationalId("");
                   setFriendCarryoverPreview(null);
                   setFriendCarryoverPreviewToken(null);
                   setFriendCarryoverPreviewFailed(false);
@@ -16682,6 +17364,67 @@ const OffersPage = ({
                 ×
               </button>
             </div>
+
+            {(
+              friendGroup?.offer.requiresEgyptianNationalId ??
+              friendOffer.requiresEgyptianNationalId
+            ) === true &&
+            friendGroup?.currentParticipant?.status !== "paid" &&
+            friendGroup?.currentParticipant?.status !== "activated" ? (
+              <div style={{
+                marginBottom: 16,
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${C.border}`,
+              }}>
+                <label
+                  htmlFor="friend-student-national-id"
+                  style={{
+                    display: "block",
+                    color: C.white,
+                    fontWeight: 800,
+                    marginBottom: 8,
+                  }}
+                >
+                  {t("الرقم القومي المصري (14 رقمًا)",
+                    "Egyptian national ID (14 digits)")}
+                </label>
+                <input
+                  id="friend-student-national-id"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={14}
+                  value={friendStudentNationalId}
+                  onChange={(event) =>
+                    setFriendStudentNationalId(event.target.value)}
+                  disabled={friendBusy}
+                  placeholder={t("اكتبي رقمك القومي",
+                    "Enter your national ID")}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: 12,
+                    borderRadius: 9,
+                    border: `1px solid ${C.border}`,
+                    color: "#111",
+                    background: "#fff",
+                    direction: "ltr",
+                  }}
+                />
+                <div style={{
+                  marginTop: 8,
+                  color: C.grayLight,
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                }}>
+                  {t(
+                    "يُستخدم الرقم للتحقق من السن. لا نحفظ الرقم كاملًا في طلب الدفع.",
+                    "Used to check age. The full ID is not stored in the payment record.",
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             {!friendGroup ? (
               <>
@@ -16825,6 +17568,40 @@ const OffersPage = ({
                   ) : null}
                 </div>
 
+                {friendGroup.remainingPlaces > 0 &&
+                ["waiting", "ready"].includes(friendGroup.status) ? (
+                  <div
+                    role="status"
+                    style={{
+                      padding: 13,
+                      borderRadius: 11,
+                      border: "1px solid rgba(245,158,11,.4)",
+                      background: "rgba(254,243,199,.92)",
+                      color: "#92400e",
+                      lineHeight: 1.8,
+                      marginBottom: 15,
+                    }}
+                  >
+                    <strong>
+                      {t(
+                        friendGroup.remainingPlaces === 1
+                          ? "المجموعة ناقصها صديقة واحدة"
+                          : friendGroup.remainingPlaces === 2
+                            ? "المجموعة ناقصها صديقتين"
+                            : `المجموعة ناقصها ${friendGroup.remainingPlaces} صديقات`,
+                        `The group needs ${friendGroup.remainingPlaces} more friend(s)`,
+                      )}
+                    </strong>
+
+                    <div style={{ marginTop: 6 }}>
+                      {t(
+                        "الدفع غير متاح قبل اكتمال عدد الصديقات. ولن تتفعل الاشتراكات إلا بعد سداد الجميع.",
+                        "Payment is unavailable until the group is full. Memberships activate only after everyone pays.",
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
                 {friendGroup.matchingEnabled ? (
                   <div
                     style={{
@@ -16838,8 +17615,8 @@ const OffersPage = ({
                   >
                     🔎{" "}
                     {t(
-                      "تم تسجيل طلب العثور على شريكة. يمكنك دفع حصتك، ولن يتفعّل الاشتراك إلا بعد اكتمال المجموعة ودفع الجميع.",
-                      "Your partner request is registered. You can pay your share; activation waits until the group is complete and everyone has paid.",
+                      "تم تسجيل طلب العثور على شريكة. انتظري اكتمال عدد الصديقات قبل الدفع، ولن تتفعل الاشتراكات إلا بعد سداد الجميع.",
+                      "Your partner request is registered. Payment opens when the group is complete, and memberships activate after everyone has paid.",
                     )}
                   </div>
                 ) : (
@@ -16856,7 +17633,8 @@ const OffersPage = ({
 
                     <input
                       readOnly
-                      value={friendInviteUrl(friendGroup.token)}
+                      value={friendInviteUrl(friendGroup.individualInvitesEnabled
+                        ? (friendIndividualLink?.token ?? "") : friendGroup.token)}
                       onFocus={(event) => event.currentTarget.select()}
                       style={{
                         width: "100%",
@@ -16881,9 +17659,10 @@ const OffersPage = ({
                         type="button"
                         onClick={async () => {
                           try {
-                            await navigator.clipboard.writeText(
-                              friendInviteUrl(friendGroup.token),
-                            );
+                            const link = friendGroup.individualInvitesEnabled
+                              ? (friendIndividualLink ?? await issueSingleFriendInvite(friendGroup.id))
+                              : { token: friendGroup.token };
+                            await navigator.clipboard.writeText(friendInviteUrl(link.token));
                             setFriendCopied(true);
                           } catch {
                             setFriendError(
@@ -16911,12 +17690,16 @@ const OffersPage = ({
 
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          try {
+                            const link = friendGroup.individualInvitesEnabled
+                              ? (friendIndividualLink ?? await issueSingleFriendInvite(friendGroup.id))
+                              : {token: friendGroup.token};
                           const message = t(
                             `انضمي معايا في ${friendOffer.title} على FitZone 👭
-${friendInviteUrl(friendGroup.token)}`,
+${friendInviteUrl(link.token)}`,
                             `Join me in ${friendOffer.title} at FitZone 👭
-${friendInviteUrl(friendGroup.token)}`,
+${friendInviteUrl(link.token)}`,
                           );
 
                           window.open(
@@ -16924,6 +17707,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                             "_blank",
                             "noopener,noreferrer",
                           );
+                          } catch(error) {setFriendError(error instanceof Error ? error.message : "تعذر إنشاء الدعوة.");}
                         }}
                         style={{
                           padding: 10,
@@ -16938,6 +17722,16 @@ ${friendInviteUrl(friendGroup.token)}`,
                         WhatsApp
                       </button>
                     </div>
+                    {friendGroup.individualInvitesEnabled && friendIndividualLink ? (
+                      <button type="button"
+                        onClick={async () => {
+                          try { await cancelSingleFriendInvite(friendGroup.id); }
+                          catch(error) { setFriendError(error instanceof Error ? error.message : "تعذر الإلغاء."); }
+                        }}
+                        style={{ color: "#fda4af", marginBottom: 10, border: "1px solid #be123c", padding: 8, borderRadius: 8 }}>
+                        {t("إلغاء الدعوة الحالية وإتاحة مكان لدعوة أخرى", "Cancel this invitation and invite someone else")}
+                      </button>
+                    ) : null}
                   </>
                 )}
 
@@ -16991,9 +17785,9 @@ ${friendInviteUrl(friendGroup.token)}`,
                     style={{
                       padding: 13,
                       borderRadius: 11,
-                      border: "1px solid rgba(245,158,11,.35)",
-                      background: "rgba(245,158,11,.09)",
-                      color: "#fde68a",
+                      border: "1px solid rgba(217,119,6,.32)",
+                      background: "rgba(254,243,199,.92)",
+                      color: "#92400e",
                       marginBottom: 15,
                       lineHeight: 1.7,
                     }}
@@ -17064,7 +17858,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         }),
                       );
 
-                      navigate("login");
+                      friendGoToLogin(friendGroup.token);
                     }}
                     style={{
                       width: "100%",
@@ -17099,11 +17893,34 @@ ${friendInviteUrl(friendGroup.token)}`,
                           "Your share is paid — waiting for the group",
                         )}
                   </div>
+                ) : !friendGroup.currentParticipant ? (
+                  <button
+                    type="button"
+                    disabled={friendBusy}
+                    onClick={() =>
+                      void loadOrJoinFriendGroup(friendGroup.token, true)}
+                    style={{
+                      width: "100%",
+                      padding: 13,
+                      borderRadius: 11,
+                      border: 0,
+                      background: C.red,
+                      color: C.white,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("تحققي وانضمي للمجموعة",
+                      "Verify and join the group")}
+                  </button>
                 ) : friendGroup.currentParticipant ? (
                   <button
                     type="button"
                     disabled={
                       friendBusy ||
+                      friendGroup.remainingPlaces > 0 ||
+                      friendGroup.status !== "ready" ||
+                      !friendGroup.ready ||
                       (friendGroup.currentParticipant.status !==
                         "checkout_started" &&
                         (friendCarryoverPreviewLoading ||
@@ -17125,7 +17942,17 @@ ${friendInviteUrl(friendGroup.token)}`,
                   >
                     {friendBusy
                       ? t("جاري التجهيز...", "Preparing...")
-                      : t(
+                      : friendGroup.remainingPlaces > 0
+                        ? t(
+                            "كمّلي عدد الصديقات أولًا",
+                            "Complete your group first",
+                          )
+                        : friendGroup.status !== "ready" || !friendGroup.ready
+                          ? t(
+                              "المجموعة غير جاهزة للدفع",
+                              "Group not ready for payment",
+                            )
+                          : t(
                           `ادفعي حصتك ${formatCurrency(
                             friendGroup.currentParticipant.shareAmountMinor /
                               100,
@@ -17374,9 +18201,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? formatCurrency(o.specialPrice ?? 0)
-                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
-                              ? t("السعر الحالي", "Current price")
-                            : o.type === "percentage"
+                            :  o.type === "percentage"
                               ? `${o.discount}%`
                               : `${o.discount} ${t("ج.م", "EGP")}`}
                         </div>
@@ -17385,9 +18210,7 @@ ${friendInviteUrl(friendGroup.token)}`,
                         >
                           {o.type === "special"
                             ? t("سعر العرض الخاص", "Special offer price")
-                            : o.offerBoxEnabled && !o.offerBoxApplyDiscount
-                              ? t("بدون خصم إضافي عند الشراء", "No extra checkout discount")
-                            : t("قيمة الخصم", "Discount value")}
+                            :  t("قيمة الخصم", "Discount value")}
                         </div>
                       </div>
                     </div>
@@ -17551,17 +18374,12 @@ ${friendInviteUrl(friendGroup.token)}`,
                           return;
                         }
 
-                        if (o.offerBoxEnabled) {
-                  void purchaseOfferBox(o);
-                  return;
-                }
                 openSubscribeModal(
                           o.membershipId,
                           o.id,
                           o.specialPrice ?? null,
                         );
                       }}
-                      data-offer-box-id={o.offerBoxEnabled ? o.id : undefined}
                       disabled={offerUnavailable || (o.offerBoxEnabled && offerBoxBusyId !== null)}
                       style={{
                         width: "100%",
@@ -17578,14 +18396,38 @@ ${friendInviteUrl(friendGroup.token)}`,
                         opacity: offerUnavailable ? 0.6 : 1,
                       }}
                     >
-                      {offerUnavailable
-                        ? t("العرض غير متاح", "Offer unavailable")
-                        : o.offerBoxEnabled && offerBoxBusyId === o.id
-    ? t("جاري تجهيز الدفع...", "Preparing payment...")
-    : o.offerBoxEnabled
-      ? t("شراء العرض", "Buy offer")
-      : t("اشتركي الآن", "Subscribe now")}
+                      {offerUnavailable ? t("العرض غير متاح", "Offer unavailable") : t("اشتركي الآن", "Subscribe now")}
                     </button>
+
+        {o.offerBoxEnabled && !o.friendOfferEnabled && (
+          <button
+            type="button"
+            data-offer-box-id={o.id}
+            onClick={() => {
+              trackBusinessView("offer_viewed", o.id);
+              void purchaseOfferBox(o);
+            }}
+            disabled={offerUnavailable || offerBoxBusyId !== null}
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: 8,
+              borderRadius: 10,
+              border: `1px dashed ${offerTextColor}`,
+              background: "transparent",
+              color: offerTextColor,
+              fontFamily: "'Cairo', sans-serif",
+              fontSize: 13,
+              fontWeight: 700,
+              opacity: offerUnavailable ? 0.6 : 1,
+              cursor: offerUnavailable ? "not-allowed" : "pointer",
+            }}
+          >
+            {offerBoxBusyId === o.id
+              ? t("جاري تجهيز الدفع...", "Preparing payment...")
+              : t("احفظيه في صندوق العروض", "Save in Offer Box")}
+          </button>
+        )}
         {o.offerBoxEnabled &&
           offerBoxError?.offerId === o.id && (
             <div
@@ -17605,6 +18447,7 @@ ${friendInviteUrl(friendGroup.token)}`,
               {offerBoxError.message}
             </div>
           )}
+        {offerBoxAgeDialogId === o.id && offerBoxAgeDialog}
                   </div>
                 </div>
               );
@@ -28143,14 +28986,25 @@ export default function App({
 
   const pages = {
     home: (
-      <HomePage
-        navigate={navigate}
-        summary={summary}
-        storeEnabled={storeEnabled}
-        initialHomeData={initialHomeData}
-        diagnosticMounted={authDiagnosticMounted}
-        hydrationDisable={hydrationDisable}
-      />
+      <>
+        <HomePage
+          navigate={navigate}
+          summary={summary}
+          storeEnabled={storeEnabled}
+          initialHomeData={initialHomeData}
+          diagnosticMounted={authDiagnosticMounted}
+          hydrationDisable={hydrationDisable}
+        />
+        <PinkFridayPopup
+          onSelectOffer={(offer) => {
+            window.dispatchEvent(
+              new CustomEvent("fitzone-pink-friday-offer-selected", {
+                detail: offer,
+              }),
+            );
+          }}
+        />
+      </>
     ),
     about: <AboutPage />,
     classes: <ClassesPage navigate={navigate} />,

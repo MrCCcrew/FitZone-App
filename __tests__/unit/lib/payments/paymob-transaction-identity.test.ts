@@ -34,23 +34,42 @@ const transaction = {
 async function inquire(
   changes: Record<string, unknown> = {},
   txChanges: Record<string, unknown> = {},
+  orderChanges: Record<string, unknown> = {},
 ) {
   const acceptance = { ...base, ...changes };
+  const order = {
+    id: 123456,
+    merchant_order_id: "payment-test-1",
+    amount_cents: 9000,
+    currency: "EGP",
+    transactions: [{ ...base }],
+    ...orderChanges,
+  };
   const fetchMock = vi.fn(async (url: unknown, options?: RequestInit) => {
-    if (String(url).includes("/api/auth/tokens")) {
+    const requestUrl = String(url);
+    if (requestUrl.includes("/api/auth/tokens")) {
       return { ok: true, json: async () => ({ token: "test_auth_token" }) };
     }
-    expect(String(url)).toContain("/api/acceptance/transactions/891234");
     expect((options?.headers as Record<string, string>).Authorization)
       .toBe("Bearer test_auth_token");
-    return { ok: true, json: async () => acceptance };
+    if (requestUrl.includes("/api/acceptance/transactions/891234")) {
+      return { ok: true, json: async () => acceptance };
+    }
+    if (requestUrl.includes("/api/ecommerce/orders/123456")) {
+      return { ok: true, json: async () => order };
+    }
+    throw new Error(`Unexpected Paymob request: ${requestUrl}`);
   });
   vi.stubGlobal("fetch", fetchMock);
   const result = await paymobPaymentProvider.verifyTransaction({
     ...transaction,
     ...txChanges,
   });
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  if (result.status === "paid") {
+    expect(fetchMock.mock.calls.some(([url]) =>
+      String(url).includes("/api/ecommerce/orders/123456")
+    )).toBe(true);
+  }
   return result.status;
 }
 
@@ -65,6 +84,14 @@ describe("Paymob acceptance inquiry: exact transaction identity", () => {
 
   it("accepts the exact paid amount, currency, order and transaction", async () => {
     expect(await inquire()).toBe("paid");
+  });
+  it("rejects a paid Acceptance transaction absent from the Order", async () => {
+    const foreign = { ...base, id: 777777 };
+    expect(await inquire({}, {}, { transactions: [foreign] })).toBe("pending");
+  });
+  it("rejects a paid Acceptance transaction with a foreign merchant Order", async () => {
+    expect(await inquire({}, {}, { merchant_order_id: "foreign-payment" }))
+      .toBe("pending");
   });
   it("rejects a foreign Paymob transaction ID", async () => {
     expect(await inquire({ id: 111 })).toBe("pending");

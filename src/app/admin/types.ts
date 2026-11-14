@@ -37,7 +37,8 @@ export type Section =
   | "orders"
   | "delivery-companies"
   | "store-campaigns"
-  | "store-free-gifts";
+  | "store-free-gifts"
+  | "pink-friday-popup";
 
 export interface AdminEmployee {
   id: string;

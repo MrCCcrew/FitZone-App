@@ -34,7 +34,24 @@ function testDbGuard() {
 
   if (
     process.env.APP_ENV !== "test" ||
-    url.pathname.replace(/^\//, "") !== "fitzone_test"
+    !(
+      (
+        process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" &&
+        process.env.NODE_ENV === "test" &&
+        url.protocol === "mysql:" &&
+        url.hostname === "127.0.0.1" &&
+        url.port === "3306" &&
+        decodeURIComponent(url.username) === "fitzone_r13_user" &&
+        decodeURIComponent(url.pathname) ===
+          "/fitzone_final_release_r13_test" &&
+        process.env.TEST_DATABASE_URL ===
+          process.env.DATABASE_URL
+      ) ||
+      (
+        process.env.FITZONE_R13_ISOLATED_INTEGRATION !== "1" &&
+        url.pathname.replace(/^\//, "") === "fitzone_test"
+      )
+    )
   ) {
     throw new Error(
       `REFUSING: commission integration tests require fitzone_test, got ${url.pathname}`,

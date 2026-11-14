@@ -1,3 +1,21 @@
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import {
   afterAll,
   beforeAll,
@@ -114,15 +132,24 @@ beforeAll(async () => {
     >("SELECT DATABASE() AS db");
 
   if (
-    current[0]?.db !== "fitzone_test"
+    current[0]?.db !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_final_release_r13_test" : "fitzone_test")
   ) {
     throw new Error(
       "REFUSING_NON_TEST_DB",
     );
   }
 
-  actor =
-    await db.user.create({
+  const r15zaeExistingRuns = await db.payrollRun.count({
+    where: {
+      monthKey: { in: ["2091-01", "2091-02", "2091-03"] },
+    },
+  });
+
+  if (r15zaeExistingRuns !== 0) {
+    throw new Error("R15ZAE_PREEXISTING_PAYROLL_RUN_COLLISION");
+  }
+
+  actor = await db.user.create({
       data: {
         email:
           `c10-source-${stamp}@example.test`,
@@ -187,6 +214,18 @@ afterAll(async () => {
       },
     },
   });
+
+  if (runIds.length > 0) {
+    await db.auditLog.deleteMany({
+      where: {
+        targetType: "PayrollRun",
+        action: "payroll_run_calculate",
+        actorName: "C10 Source Test Actor",
+        actorUserId: actor.id,
+        targetId: { in: runIds },
+      },
+    });
+  }
 
   await db.payrollRun.deleteMany({
     where: {

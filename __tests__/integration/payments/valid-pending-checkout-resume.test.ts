@@ -101,6 +101,50 @@ describe("Valid pending membership checkout resume", { timeout: 60000 }, () => {
       expect(exact?.transactionId).toBe(paymentId);
       expect(exact?.checkoutUrl).toBe("https://checkout.test/existing-pending");
 
+      const originalUrl =
+        "https://checkout.test/existing-pending";
+      const originalExpiry =
+        new Date(Date.now() + 30 * 60_000);
+
+      for (const invalid of [
+        { expiresAt: null, checkoutUrl: originalUrl },
+        {
+          expiresAt: new Date(Date.now() - 60_000),
+          checkoutUrl: originalUrl,
+        },
+        {
+          expiresAt: new Date(
+            membership.pendingExpiresAt!.getTime() + 60_000,
+          ),
+          checkoutUrl: originalUrl,
+        },
+        {
+          expiresAt: originalExpiry,
+          checkoutUrl: "http://checkout.test/unsafe",
+        },
+      ]) {
+        await db.paymentTransaction.update({
+          where: { id: paymentId },
+          data: invalid,
+        });
+
+        const rejected =
+          await findReusablePendingMembershipCheckout({
+            userId,
+            fingerprint,
+          });
+
+        expect(rejected).toBeNull();
+      }
+
+      await db.paymentTransaction.update({
+        where: { id: paymentId },
+        data: {
+          expiresAt: originalExpiry,
+          checkoutUrl: originalUrl,
+        },
+      });
+
       const mismatches: SubscribeAttemptFingerprint[] = [
         {
           ...fingerprint,

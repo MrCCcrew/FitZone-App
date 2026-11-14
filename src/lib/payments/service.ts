@@ -1,3 +1,6 @@
+import { createDirectCommercialPaymentTx } from "@/lib/offer-box/create-direct-commercial-payment";
+import { supersedeOrdinarySubscriptionsTx } from "@/lib/membership-session-carryover";
+import { asDbTransactionClient as asSupersessionTransactionClient } from "@/lib/db";
 import { shouldDeferMembershipPaymentRestore } from "@/lib/payments/membership-retry-financial-policy";
 import { asDbTransactionClient, db } from "@/lib/db";
 import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
@@ -48,7 +51,7 @@ import {
   applyMembershipBookingPlanTx,
   ensureMembershipBookingsTx,
 } from "@/lib/payments/membership-booking-plan";
-import { verifyPaymobTransactionForRecovery } from "@/lib/payments/providers/paymob";
+import { verifyPaymobTransactionForRecovery, confirmPaymobOrderPaidForRecovery } from "@/lib/payments/providers/paymob";
 import type {
   PaymentProviderKey,
   PaymentPurpose,
@@ -66,6 +69,8 @@ type CreatePaymentTransactionInput = {
   orderId?: string | null;
   membershipId?: string | null;
   offerId?: string | null;
+  /** Internal server-only friend-offer payment flow. */
+  friendOfferShare?: true;
   returnUrl?: string | null;
   cancelUrl?: string | null;
   description?: string | null;
@@ -323,6 +328,7 @@ async function activatePaidMembershipTx(
   membershipId: string,
   options?: {
     skipBookingGuarantee?: boolean;
+    preserveExistingDates?: boolean;
   },
 ): Promise<{
   success: boolean;
@@ -441,10 +447,95 @@ async function activatePaidMembershipTx(
     return { success: false, membershipData: null };
   }
 
+  // P0_LEGACY_PURCHASE_DURATION_GUARD_R18D
+  // The mutable catalog plan is never proof of purchased duration.
+  const preserveExistingDates = options?.preserveExistingDates === true;
+  const snapshotDays = membership.snapshotDurationDays;
+  let duration: number;
+
+  if (
+    snapshotDays !== null &&
+    snapshotDays !== undefined
+  ) {
+    if (
+      !Number.isSafeInteger(snapshotDays) ||
+      snapshotDays <= 0 ||
+      snapshotDays > 3650
+    ) {
+      throw new Error("PURCHASE_DURATION_PROOF_REQUIRED");
+    }
+    duration = snapshotDays;
+  } else {
+    // Legacy checkout without snapshot: prove the original term
+    // from the linked payment's invoice and original pending dates.
+    const linkedPayment = await tx.paymentTransaction.findUnique({
+      where: { id: transactionId },
+      select: {
+        membershipId: true,
+        userId: true,
+      },
+    });
+
+    const invoice = toInvoiceDetails(paymentMetadata);
+    const originalStart = membership.startDate;
+    const originalEnd = membership.endDate;
+
+    if (
+      !linkedPayment ||
+      linkedPayment.membershipId !== membershipId ||
+      linkedPayment.userId !== membership.userId ||
+      !invoice?.startDate ||
+      !invoice.endDate ||
+      !originalStart ||
+      !originalEnd
+    ) {
+      throw new Error("PURCHASE_DURATION_PROOF_REQUIRED");
+    }
+
+    const invoiceMs =
+      invoice.endDate.getTime() - invoice.startDate.getTime();
+    const candidate = Math.round(invoiceMs / 86400000);
+
+    const originalDatesMatch =
+      Math.abs(
+        invoice.startDate.getTime() - originalStart.getTime(),
+      ) <= 60000 &&
+      Math.abs(
+        invoice.endDate.getTime() - originalEnd.getTime(),
+      ) <= 60000;
+
+    if (
+      !Number.isSafeInteger(candidate) ||
+      candidate <= 0 ||
+      candidate > 3650 ||
+      Math.abs(invoiceMs - candidate * 86400000) > 3600000 ||
+      !originalDatesMatch
+    ) {
+      throw new Error("PURCHASE_DURATION_PROOF_REQUIRED");
+    }
+
+    duration = candidate;
+  }
+
   const now = new Date();
-  const duration =
-    membership.snapshotDurationDays ?? membership.membership.duration ?? 30;
-  const endDate = new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
+
+
+  if (
+    preserveExistingDates &&
+    (!membership.startDate ||
+      !membership.endDate ||
+      membership.endDate <= membership.startDate)
+  ) {
+    throw new Error("RECOVERY_INVALID_ORIGINAL_MEMBERSHIP_DATES");
+  }
+
+  const activationStartDate = preserveExistingDates
+    ? membership.startDate!
+    : now;
+
+  const endDate = preserveExistingDates
+    ? membership.endDate!
+    : new Date(now.getTime() + duration * 24 * 60 * 60 * 1000);
 
   // Decide and lock the carryover source while the target is still pending.
   const carryoverPreview = await prepareMembershipSessionCarryoverTx(tx, {
@@ -456,7 +547,7 @@ async function activatePaidMembershipTx(
       eligibilitySnapshot: membership.eligibilitySnapshot,
       allowedClassTypesSnapshot: membership.allowedClassTypesSnapshot,
       baseSessions: membership.baseSessions ?? membership.totalSessions,
-      startDate: now,
+      startDate: activationStartDate,
       endDate,
       kind: membership.membership.kind,
     },
@@ -495,7 +586,7 @@ async function activatePaidMembershipTx(
     data: {
       status: "active",
       activatedAt: now,
-      startDate: now,
+      startDate: activationStartDate,
       endDate,
       pendingExpiresAt: null,
     },
@@ -531,16 +622,12 @@ async function activatePaidMembershipTx(
 
   // Supersession is deliberately last: no old entitlement is lost before
   // base bookings and carryover both succeed.
-  if (membership.membership.kind !== "trial") {
-    await tx.userMembership.updateMany({
-      where: {
-        userId: membership.userId,
-        status: "active",
-        id: { not: membershipId },
-      },
-      data: { status: "expired" },
-    });
-  }
+  await supersedeOrdinarySubscriptionsTx(asSupersessionTransactionClient(tx), {
+    userId: membership.userId,
+    targetMembershipId: membershipId,
+    targetKind: membership.membership.kind,
+    targetOfferId: membership.offerId ?? null,
+  });
 
   if (
     Object.prototype.hasOwnProperty.call(
@@ -568,7 +655,7 @@ async function activatePaidMembershipTx(
     success: true,
     membershipData: {
       status: "active",
-      startDate: now,
+      startDate: activationStartDate,
       offerId: membership.offerId,
       membership: { ...membership.membership, duration },
       offer: membership.offer,
@@ -1120,32 +1207,98 @@ export async function createPaymentTransaction(
    */
   let membershipHoldExpiresAt: Date | null = null;
 
+  if (input.friendOfferShare === true &&
+      (provider.key !== "paymob" ||
+       input.purpose !== "membership" ||
+       input.membershipId != null)) {
+    throw new Error("FRIEND_OFFER_PAYMENT_CONTRACT_INVALID");
+  }
+
   if (provider.key === "paymob" && input.purpose === "membership") {
-    if (!input.membershipId) {
-      throw new Error("MEMBERSHIP_CHECKOUT_MISSING_MEMBERSHIP");
+    if (input.friendOfferShare === true) {
+      const metadata = input.metadata;
+      const participantId = metadata?.friendParticipantId;
+      const groupId = metadata?.friendGroupId;
+
+      if (
+        metadata?.source !== "friend-offer" ||
+        typeof participantId !== "string" ||
+        !participantId ||
+        typeof groupId !== "string" ||
+        !groupId ||
+        !input.offerId
+      ) {
+        throw new Error("FRIEND_OFFER_PAYMENT_PROOF_REQUIRED");
+      }
+
+      const [participant, group] = await Promise.all([
+        db.friendOfferParticipant.findUnique({
+          where: { id: participantId },
+          select: {
+            userId: true,
+            groupId: true,
+            shareAmountMinor: true,
+            status: true,
+            paymentTransactionId: true,
+          },
+        }),
+        db.friendOfferGroup.findUnique({
+          where: { id: groupId },
+          select: {
+            config: {
+              select: { offerId: true },
+            },
+          },
+        }),
+      ]);
+
+      if (
+        !participant ||
+        !group ||
+        participant.userId !== input.userId ||
+        participant.groupId !== groupId ||
+        group.config.offerId !== input.offerId ||
+        participant.status !== "checkout_claiming" ||
+        participant.paymentTransactionId !== null ||
+        !Number.isSafeInteger(Math.round(amount * 100)) ||
+        Math.abs(amount * 100 - participant.shareAmountMinor) > 0.000001
+      ) {
+        throw new Error("FRIEND_OFFER_PAYMENT_PROOF_INVALID");
+      }
+
+      /*
+       * Friend-offer shares do not have an individual pending
+       * UserMembership. Keep a bounded checkout session,
+       * independent of the ordinary membership's 60-minute hold.
+       */
+      membershipHoldExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    } else {
+      if (!input.membershipId) {
+        throw new Error("MEMBERSHIP_CHECKOUT_MISSING_MEMBERSHIP");
+      }
+
+      const heldMembership = await db.userMembership.findUnique({
+        where: { id: input.membershipId },
+        select: {
+          userId: true,
+          status: true,
+          pendingExpiresAt: true,
+        },
+      });
+
+      if (
+        !heldMembership ||
+        heldMembership.userId !== input.userId ||
+        heldMembership.status !== "pending_payment" ||
+        !heldMembership.pendingExpiresAt ||
+        !Number.isFinite(heldMembership.pendingExpiresAt.getTime()) ||
+        heldMembership.pendingExpiresAt.getTime() <= Date.now()
+      ) {
+        throw new Error("MEMBERSHIP_CHECKOUT_ORIGINAL_HOLD_INVALID");
+      }
+
+      membershipHoldExpiresAt = heldMembership.pendingExpiresAt;
     }
-
-    const heldMembership = await db.userMembership.findUnique({
-      where: { id: input.membershipId },
-      select: {
-        userId: true,
-        status: true,
-        pendingExpiresAt: true,
-      },
-    });
-
-    if (
-      !heldMembership ||
-      heldMembership.userId !== input.userId ||
-      heldMembership.status !== "pending_payment" ||
-      !heldMembership.pendingExpiresAt ||
-      !Number.isFinite(heldMembership.pendingExpiresAt.getTime()) ||
-      heldMembership.pendingExpiresAt.getTime() <= Date.now()
-    ) {
-      throw new Error("MEMBERSHIP_CHECKOUT_ORIGINAL_HOLD_INVALID");
-    }
-
-    membershipHoldExpiresAt = heldMembership.pendingExpiresAt;
   }
   /* WALLET_TOPUP_BONUS_CHECKOUT_SNAPSHOT */
   let paymentMetadata: Record<string, unknown> = {
@@ -1269,6 +1422,321 @@ export async function createPaymentTransaction(
       return mapPaymentTransaction(updated);
     }
     throw new Error("PAYMENT_CHECKOUT_RACE_REQUIRES_RECONCILIATION");
+  }
+
+  return mapPaymentTransaction(updated, checkout.message);
+}
+
+/**
+ * Initialize Paymob for an already-owned direct commercial
+ * purchase without creating a second local payment.
+ *
+ * A durable started marker deliberately has no automatic
+ * timeout/reclaim path: a lost response may hide a live
+ * Paymob intention.
+ *
+ * This internal service must not be exposed before the
+ * direct commercial paid-finalization and expiry
+ * reconciliation paths are complete.
+ */
+export async function initializeDirectCommercialPayment(
+  input: {
+    userId: string;
+    purchaseId: string;
+  },
+) {
+  const provider = getPaymentProvider("paymob");
+
+  if (!provider || !provider.enabled) {
+    throw new Error("DIRECT_COMMERCIAL_PAYMOB_UNAVAILABLE");
+  }
+
+  const claim = await db.$transaction(async (tx) => {
+    const owner = await createDirectCommercialPaymentTx(
+      asDbTransactionClient(tx),
+      {
+        ...input,
+        serverNow: new Date(),
+      },
+    );
+
+    const payment =
+      await tx.paymentTransaction.findUniqueOrThrow({
+        where: { id: owner.transactionId },
+      });
+
+    const metadata = parseJson(payment.metadata);
+
+    if (!metadata) {
+      throw new Error("DIRECT_COMMERCIAL_PAYMENT_METADATA_REQUIRED");
+    }
+
+    const rawMarker =
+      metadata.directCommercialProviderInitialization;
+
+    if (rawMarker != null) {
+      if (
+        typeof rawMarker !== "object" ||
+        Array.isArray(rawMarker)
+      ) {
+        throw new Error(
+          "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+        );
+      }
+
+      const marker = rawMarker as Record<string, unknown>;
+
+      const providerExpiresAt =
+        typeof marker.providerExpiresAt === "string"
+          ? new Date(marker.providerExpiresAt)
+          : null;
+
+      if (
+        marker.version === 1 &&
+        marker.state === "ready" &&
+        marker.transactionId === payment.id &&
+        payment.referenceCode &&
+        payment.checkoutUrl &&
+        payment.providerReference &&
+        marker.providerReference === payment.providerReference &&
+        providerExpiresAt &&
+        Number.isFinite(providerExpiresAt.getTime()) &&
+        providerExpiresAt.getTime() > Date.now() &&
+        providerExpiresAt <= owner.holdExpiresAt
+      ) {
+        return {
+          kind: "ready" as const,
+          payment,
+        };
+      }
+
+      throw new Error(
+        "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+      );
+    }
+
+    if (
+      payment.status !== "pending" ||
+      payment.checkoutUrl !== null ||
+      payment.providerReference !== null ||
+      payment.externalReference !== null ||
+      payment.providerPayload !== null ||
+      payment.paidAt !== null ||
+      payment.referenceCode !== null
+    ) {
+      throw new Error(
+        "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+      );
+    }
+
+    const customer = await tx.user.findUniqueOrThrow({
+      where: { id: input.userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+      },
+    });
+
+    const category: PaymentReferenceCategory =
+      metadata.commercialKind === "package"
+        ? "package"
+        : "offers";
+
+    const referenceCode =
+      await generatePaymentReferenceCode(tx, category);
+
+    const claimedMetadata = {
+      ...metadata,
+      directCommercialProviderInitialization: {
+        version: 1,
+        state: "started",
+        transactionId: payment.id,
+        startedAt: new Date().toISOString(),
+      },
+    };
+
+    const claimResult =
+      await tx.paymentTransaction.updateMany({
+        where: {
+          id: payment.id,
+          userId: input.userId,
+          status: "pending",
+          metadata: payment.metadata,
+          referenceCode: null,
+          checkoutUrl: null,
+          providerReference: null,
+          externalReference: null,
+          providerPayload: null,
+          paidAt: null,
+          expiresAt: owner.holdExpiresAt,
+        },
+        data: {
+          referenceCode,
+          metadata: JSON.stringify(claimedMetadata),
+        },
+      });
+
+    if (claimResult.count !== 1) {
+      throw new Error(
+        "DIRECT_COMMERCIAL_PROVIDER_CLAIM_LOST",
+      );
+    }
+
+    const claimedPayment =
+      await tx.paymentTransaction.findUniqueOrThrow({
+        where: { id: payment.id },
+      });
+
+    return {
+      kind: "claimed" as const,
+      payment: claimedPayment,
+      customer,
+      holdExpiresAt: owner.holdExpiresAt,
+      claimedMetadata,
+    };
+  });
+
+  if (claim.kind === "ready") {
+    return mapPaymentTransaction(claim.payment);
+  }
+
+  const payment = claim.payment;
+
+  // Do not begin a provider request after the local
+  // purchase hold has already expired.
+  if (claim.holdExpiresAt.getTime() <= Date.now()) {
+    throw new Error(
+      "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+    );
+  }
+
+  // Narrow the commit-to-provider race. The external
+  // request is never protected by a long-lived DB lock.
+  const current = await db.paymentTransaction.findUnique({
+    where: { id: payment.id },
+  });
+
+  if (
+    !current ||
+    current.status !== "pending" ||
+    current.metadata !== payment.metadata ||
+    current.providerReference !== null ||
+    current.checkoutUrl !== null
+  ) {
+    throw new Error(
+      "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+    );
+  }
+
+  /*
+   * No retry or fallback provider here.
+   *
+   * If createCheckout throws, the committed started
+   * marker survives. A second call must not create
+   * another intention.
+   */
+  const checkout = await provider.createCheckout({
+    transactionId: payment.id,
+    amount: payment.amount,
+    currency: payment.currency,
+    purpose: "offer_box",
+    membershipHoldExpiresAt: claim.holdExpiresAt,
+    returnUrl: payment.returnUrl,
+    cancelUrl: payment.cancelUrl,
+    customer: claim.customer,
+    context: {
+      orderId: null,
+      membershipId: null,
+      offerId: payment.offerId,
+      metadata: claim.claimedMetadata,
+      paymentMethod: "paymob",
+      customerPhone: claim.customer.phone,
+    },
+  });
+
+  if (
+    checkout.provider !== "paymob" ||
+    checkout.status !== "pending" ||
+    !checkout.checkoutUrl ||
+    !checkout.providerReference ||
+    checkout.externalReference != null ||
+    !(checkout.expiresAt instanceof Date) ||
+    !Number.isFinite(checkout.expiresAt.getTime()) ||
+    checkout.expiresAt > claim.holdExpiresAt ||
+    !checkout.payload ||
+    checkout.payload.intentionId !== checkout.providerReference ||
+    !/^[1-9][0-9]*$/.test(
+      String(checkout.payload.intentionOrderId ?? ""),
+    )
+  ) {
+    throw new Error(
+      "DIRECT_COMMERCIAL_PROVIDER_RESULT_REQUIRES_RECONCILIATION",
+    );
+  }
+
+  const readyMetadata = {
+    ...claim.claimedMetadata,
+    directCommercialProviderInitialization: {
+      ...claim.claimedMetadata.directCommercialProviderInitialization,
+      state: "ready",
+      providerReference: checkout.providerReference,
+      providerExpiresAt: checkout.expiresAt.toISOString(),
+      readyAt: new Date().toISOString(),
+    },
+  };
+
+  /*
+   * Preserve the original local hold in expiresAt.
+   * Provider-session expiry is a separate fact in
+   * the initialization metadata.
+   *
+   * A webhook or reconciliation that changed payment
+   * state wins over this older initialization response.
+   */
+  const saved = await db.paymentTransaction.updateMany({
+    where: {
+      id: payment.id,
+      userId: input.userId,
+      status: "pending",
+      metadata: payment.metadata,
+      referenceCode: payment.referenceCode,
+      checkoutUrl: null,
+      providerReference: null,
+      externalReference: null,
+      providerPayload: null,
+      paidAt: null,
+      expiresAt: claim.holdExpiresAt,
+    },
+    data: {
+      checkoutUrl: checkout.checkoutUrl,
+      iframeUrl: checkout.iframeUrl ?? null,
+      providerReference: checkout.providerReference,
+      providerPayload: stringifyJson(checkout.payload),
+      metadata: JSON.stringify(readyMetadata),
+    },
+  });
+
+  if (saved.count !== 1) {
+    throw new Error(
+      "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+    );
+  }
+
+  const updated =
+    await db.paymentTransaction.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+
+  if (
+    updated.status !== "pending" ||
+    updated.metadata !== JSON.stringify(readyMetadata) ||
+    checkout.expiresAt.getTime() <= Date.now()
+  ) {
+    throw new Error(
+      "DIRECT_COMMERCIAL_PROVIDER_RECONCILIATION_REQUIRED",
+    );
   }
 
   return mapPaymentTransaction(updated, checkout.message);
@@ -1425,6 +1893,11 @@ export async function updatePaymentTransactionStatus(
       userId: true,
       purpose: true,
       provider: true,
+      providerReference: true,
+      externalReference: true,
+      providerPayload: true,
+      amount: true,
+      currency: true,
       expiresAt: true,
     },
   });
@@ -1447,7 +1920,8 @@ export async function updatePaymentTransactionStatus(
     status === "failed" &&
     isOpenPaymentStatus &&
     existing?.provider === "paymob" &&
-    existing.purpose === "membership" &&
+    (existing.purpose === "membership" ||
+      existing.purpose === "subscription") &&
     Boolean(existing.membershipId) &&
     existing.expiresAt instanceof Date &&
     existing.expiresAt.getTime() > Date.now();
@@ -1465,6 +1939,68 @@ export async function updatePaymentTransactionStatus(
     return mapPaymentTransaction(current);
   }
 
+  /*
+   * A direct commercial checkout can have multiple
+   * Paymob attempts. A failed attempt does not prove
+   * that the corresponding Order is unpaid.
+   *
+   * Its hold lifecycle is reconciled separately.
+   */
+  const commercialMetadata = parseJson(existing?.metadata);
+
+  const isDirectCommercialAttemptFailure =
+    (status === "failed" || status === "cancelled" || status === "expired") &&
+    isOpenPaymentStatus &&
+    existing?.provider === "paymob" &&
+    existing.purpose === "offer_box" &&
+    (
+      commercialMetadata?.commercialKind === "package" ||
+      commercialMetadata?.commercialKind === "direct_offer"
+    ) &&
+    typeof commercialMetadata?.offerBoxPurchaseId === "string";
+
+  if (isDirectCommercialAttemptFailure) {
+    if (status === "expired" && existing?.expiresAt && existing.expiresAt <= new Date()) {
+      await releaseExpiredOfferBoxPaymentHold({transactionId,purchaseId:commercialMetadata!.offerBoxPurchaseId as string});
+    }
+    const current =
+      await db.paymentTransaction.findUniqueOrThrow({
+        where: { id: transactionId },
+      });
+
+    return mapPaymentTransaction(current);
+  }
+
+  // PAYMOB_CENTRAL_ORDER_AUTHORITY_V1
+  // Every Paymob paid transition or paid-side-effect repair
+  // requires fresh provider verification backed by the live Order.
+  // Historical local paid state is never sufficient on its own.
+  let paymobOrderPaidVerified = false;
+
+  if (status === "paid" && existing?.provider === "paymob") {
+    const paymobProvider = getPaymentProvider("paymob");
+
+    if (!paymobProvider) {
+      throw new Error("PAYMOB_ORDER_VERIFIER_UNAVAILABLE");
+    }
+
+    const orderVerification = await paymobProvider.verifyTransaction({
+      id: transactionId,
+      providerReference: existing.providerReference,
+      externalReference: existing.externalReference,
+      amount: existing.amount,
+      currency: existing.currency,
+      metadata: existing.metadata,
+      providerPayload: existing.providerPayload,
+    });
+
+    if (orderVerification.status !== "paid") {
+      throw new Error("PAYMOB_ORDER_PAID_PROOF_REQUIRED");
+    }
+
+    paymobOrderPaidVerified = true;
+  }
+
   // Idempotency: an already-paid retry must still repair
   // recoverable business-side effects that may be missing.
   if (existing?.status === "paid" && status === "paid") {
@@ -1477,7 +2013,8 @@ export async function updatePaymentTransactionStatus(
      * instead of returning early.
      */
     if (
-      existing.purpose === "membership" &&
+      (existing.purpose === "membership" ||
+        existing.purpose === "subscription") &&
       existing.membershipId
     ) {
       return recoverPaidMembershipActivation(transactionId);
@@ -1518,6 +2055,7 @@ export async function updatePaymentTransactionStatus(
         transactionId,
         purchaseId: retryOfferBoxPurchaseId,
         paidAt: current.paidAt ?? new Date(),
+        paymobOrderPaidVerified,
       });
     }
 
@@ -1861,13 +2399,10 @@ export async function updatePaymentTransactionStatus(
            * Open + failed/cancelled states may therefore become paid.
            * Authoritative checkout expiry is final and cannot reopen.
            */
+          const directCommercialPaid = ["package", "direct_offer"].includes(String(parseJson(existing?.metadata)?.commercialKind ?? ""));
           const offerBoxPaidClaimableStatuses = [
-            "pending",
-            "pending_payment",
-            "processing",
-            "requires_action",
-            "failed",
-            "cancelled",
+            "pending", "pending_payment", "processing", "requires_action", "failed", "cancelled",
+            ...(directCommercialPaid ? ["expired"] : []),
           ];
 
           const claimed =
@@ -1877,6 +2412,7 @@ export async function updatePaymentTransactionStatus(
                 status: {
                   in: offerBoxPaidClaimableStatuses,
                 },
+                ...(directCommercialPaid ? {metadata: existing?.metadata} : {}),
               },
               data: {
                 status: "paid",
@@ -1961,7 +2497,9 @@ export async function updatePaymentTransactionStatus(
         })()
       : status === "paid" &&
           existing?.provider === "paymob" &&
-          existing?.purpose === "membership"
+          Boolean(existing.membershipId) &&
+          (existing.purpose === "membership" ||
+            existing.purpose === "subscription")
         ? await (async () => {
             // CAS also serializes a late provider success against an
             // already-approved manual no-charge release. A cancelled
@@ -1981,7 +2519,8 @@ export async function updatePaymentTransactionStatus(
               where: {
                 id: transactionId,
                 provider: "paymob",
-                purpose: "membership",
+                membershipId: existing.membershipId,
+                purpose: { in: ["membership", "subscription"] },
                 status: existing.status,
                 metadata: existing.metadata,
               },
@@ -2226,6 +2765,7 @@ export async function updatePaymentTransactionStatus(
         transactionId,
         purchaseId: offerBoxPurchaseId,
         paidAt: transaction.paidAt ?? new Date(),
+        paymobOrderPaidVerified,
       });
     }
 
@@ -3113,6 +3653,7 @@ export async function recoverPaidMembershipActivation(
       tx,
       paymentTransactionId,
       payment.membershipId!,
+      { preserveExistingDates: true },
     );
 
     activationSucceeded = result.success;
@@ -3227,6 +3768,21 @@ export async function recoverVerifiedPaymobPayment(
     throw new Error(
       `Recovery rejected: Paymob remote verification failed - ${paymobVerification.failureReason ?? "transaction not verified"}`,
     );
+  }
+
+  // PAYMOB_RECOVERY_LIVE_ORDER_AUTHORITY_V1
+  // A successful Acceptance Transaction is not sufficient.
+  // Reject before the atomic paid claim or any membership activation.
+  const confirmedByOrder = await confirmPaymobOrderPaidForRecovery({
+    paymentId: paymentTransactionId,
+    paymobOrderId: paymobVerification.paymobOrderId,
+    paymobTransactionId,
+    amount: expectedAmount,
+    currency: expectedCurrency,
+  });
+
+  if (!confirmedByOrder) {
+    throw new Error("PAYMOB_ORDER_PAID_PROOF_REQUIRED");
   }
 
   console.info("[RECOVERY] Paymob remote verification passed", {
@@ -3426,7 +3982,21 @@ export async function recoverVerifiedPaymobPayment(
                   "requires_action",
                   "cancelled",
                 ]
-              : ["pending", "pending_payment", "processing", "requires_action"],
+              : [
+                  "pending",
+                  "pending_payment",
+                  "processing",
+                  "requires_action",
+                  // Remote transaction AND Order paid proof already passed.
+                  // A failed local attempt may recover while its original
+                  // membership is still pending; cancelled memberships
+                  // require separate entitlement-safe reconciliation.
+                  ...(payment.provider === "paymob" &&
+                  payment.status === "failed" &&
+                  membership.status === "pending_payment"
+                    ? ["failed"]
+                    : []),
+                ],
           },
         },
         data: {
@@ -3484,6 +4054,7 @@ export async function recoverVerifiedPaymobPayment(
       payment.membershipId,
       {
         skipBookingGuarantee: isTimeoutCancelledRecovery,
+        preserveExistingDates: true,
       },
     );
 

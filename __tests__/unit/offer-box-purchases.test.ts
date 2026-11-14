@@ -12,6 +12,12 @@ vi.mock("@/lib/db", () => ({
     offerBoxPurchase: {
       findMany: vi.fn(),
     },
+    offerBoxEntitlement: {
+      findMany: vi.fn(async () => []),
+    },
+    booking: {
+      findMany: vi.fn(async () => []),
+    },
   },
 }));
 
@@ -22,6 +28,9 @@ function purchase(overrides: Record<string, unknown> = {}) {
     id: "purchase-1",
     userId: "user-1",
     status: "available",
+    commercialKind: "offer_box",
+    holdExpiresAt: null,
+    redeemedUserMembershipId: null,
     offerSnapshot: JSON.stringify({
       offer: {
         title: "عرض اللياقة",
@@ -85,7 +94,19 @@ describe("Offer Box customer purchases", () => {
       expect.objectContaining({
         where: {
           userId: "user-1",
-          status: { in: ["available", "redeemed"] },
+          OR: [
+            { status: { in: ["available", "redeemed"] } },
+            {
+              commercialKind: { in: ["package", "direct_offer"] },
+              status: {
+                in: [
+                  "pending_payment",
+                  "paid_activation_pending",
+                  "paid_review",
+                ],
+              },
+            },
+          ],
         },
         take: 21,
         skip: 0,

@@ -191,6 +191,7 @@ model User {
   voiceRealtimeSessions          VoiceRealtimeSession[]      @relation("VoiceSessionUser")
   friendOfferGroupsCreated       FriendOfferGroup[]          @relation("FriendOfferGroupCreator")
   friendOfferParticipants        FriendOfferParticipant[]
+  friendOfferEntitlements        FriendOfferEntitlement[]
 
   purchaseInvoicesCreated                PurchaseInvoice[]                @relation("PurchaseInvoiceCreator")
   purchaseInvoicesPosted                 PurchaseInvoice[]                @relation("PurchaseInvoicePoster")
@@ -216,6 +217,7 @@ model User {
   attendanceDeductionsCalculated         AttendanceDeduction[]            @relation("AttendanceDeductionCalculator")
   attendanceDeductionsFinalized          AttendanceDeduction[]            @relation("AttendanceDeductionFinalizer")
   offerBoxPurchases OfferBoxPurchase[] @relation("OfferBoxPurchaseUser")
+  offerBoxEntitlements OfferBoxEntitlement[] @relation("OfferBoxEntitlementOwner")
 }
 
 model AuditLog {
@@ -336,7 +338,7 @@ model PositionPayrollPolicy {
   position Position @relation(fields: [positionId], references: [id], onDelete: Restrict)
 
   @@unique([positionId, effectiveFrom])
-  @@index([positionId, effectiveFrom, effectiveTo, isActive])
+  @@index([positionId, effectiveFrom, effectiveTo, isActive], map: "PositionPayrollPolicy_position_dates_idx")
   @@index([createdById, createdAt])
 }
 
@@ -414,13 +416,13 @@ model EmployeePositionTerm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  position Position        @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  employee EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict, map: "EmployeePositionTerm_employee_fkey")
+  position Position        @relation(fields: [positionId], references: [id], onDelete: Restrict, map: "EmployeePositionTerm_position_fkey")
 
-  @@unique([employeeId, effectiveFrom])
-  @@index([employeeId, effectiveFrom, effectiveTo])
-  @@index([positionId, effectiveFrom, effectiveTo])
-  @@index([createdById, createdAt])
+  @@unique([employeeId, effectiveFrom], map: "EmployeePositionTerm_employee_from_key")
+  @@index([employeeId, effectiveFrom, effectiveTo], map: "EmployeePositionTerm_employee_dates_idx")
+  @@index([positionId, effectiveFrom, effectiveTo], map: "EmployeePositionTerm_position_dates_idx")
+  @@index([createdById, createdAt], map: "EmployeePositionTerm_creator_idx")
 }
 
 // ─── Payroll Eligibility History ──────────────────────────────────────────────
@@ -685,9 +687,9 @@ model AttendanceDeductionPolicy {
 
   deductions AttendanceDeduction[]
 
-  @@unique([employeeId, effectiveFrom])
-  @@index([employeeId, effectiveFrom, effectiveTo])
-  @@index([createdById, createdAt])
+  @@unique([employeeId, effectiveFrom], map: "ADPolicy_employee_effective_key")
+  @@index([employeeId, effectiveFrom, effectiveTo], map: "ADPolicy_employee_effective_idx")
+  @@index([createdById, createdAt], map: "ADPolicy_creator_created_idx")
 }
 
 model AttendanceDeduction {
@@ -744,12 +746,12 @@ model AttendanceDeduction {
 
   occurrences AttendanceDeductionOccurrence[]
 
-  @@unique([employeeId, monthKey])
+  @@unique([employeeId, monthKey], map: "ADDeduction_employee_month_key")
   @@index([monthKey, status])
-  @@index([employeeId, monthKey])
+  @@index([employeeId, monthKey], map: "ADDeduction_employee_month_idx")
   @@index([policyIdSnapshot])
-  @@index([calculatedById, calculatedAt])
-  @@index([finalizedById, finalizedAt])
+  @@index([calculatedById, calculatedAt], map: "ADDeduction_calculator_time_idx")
+  @@index([finalizedById, finalizedAt], map: "ADDeduction_finalizer_time_idx")
 }
 
 model AttendanceDeductionOccurrence {
@@ -785,9 +787,9 @@ model AttendanceDeductionOccurrence {
 
   deduction AttendanceDeduction @relation(fields: [deductionId], references: [id], onDelete: Restrict)
 
-  @@unique([deductionId, attendanceId])
-  @@index([attendanceId])
-  @@index([attendanceDate])
+  @@unique([deductionId, attendanceId], map: "ADOccurrence_deduction_attendance_key")
+  @@index([attendanceId], map: "ADOccurrence_attendance_idx")
+  @@index([attendanceDate], map: "ADOccurrence_date_idx")
 }
 
 // ─── Payroll Adjustments / Employee Loans ────────────────────────────────────
@@ -985,10 +987,10 @@ model PayrollRun {
 
   employees PayrollRunEmployee[]
 
-  @@index([status, monthKey])
-  @@index([createdAt])
-  @@index([calculatedById, calculatedAt])
-  @@index([finalizedById, finalizedAt])
+  @@index([status, monthKey], map: "PayrollRun_status_month_idx")
+  @@index([createdAt], map: "PayrollRun_created_idx")
+  @@index([calculatedById, calculatedAt], map: "PayrollRun_calculated_idx")
+  @@index([finalizedById, finalizedAt], map: "PayrollRun_finalized_idx")
 }
 
 model PayrollRunEmployee {
@@ -1047,14 +1049,15 @@ model PayrollRunEmployee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  payrollRun PayrollRun      @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
-  employee   EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payrollRun PayrollRun      @relation(fields: [payrollRunId], references: [id], onDelete: Restrict, map: "PRE_run_fk")
+  employee   EmployeeProfile @relation(fields: [employeeId], references: [id], onDelete: Restrict, map: "PRE_employee_fk")
 
   items PayrollRunItem[]
 
-  @@unique([payrollRunId, employeeId])
-  @@index([employeeId])
-  @@index([payrollRunId])
+  @@unique([payrollRunId, employeeId], map: "PRE_run_employee_key")
+  @@index([employeeId], map: "PRE_employee_idx")
+  @@index([payrollRunId], map: "PRE_run_idx")
+  @@index([payrollRunId, status], map: "PRE_status_idx")
 }
 
 model PayrollRunItem {
@@ -1094,11 +1097,11 @@ model PayrollRunItem {
 
   createdAt DateTime @default(now())
 
-  payrollRunEmployee PayrollRunEmployee @relation(fields: [payrollRunEmployeeId], references: [id], onDelete: Restrict)
+  payrollRunEmployee PayrollRunEmployee @relation(fields: [payrollRunEmployeeId], references: [id], onDelete: Restrict, map: "PRI_employee_fk")
 
-  @@unique([payrollRunEmployeeId, sourceType, sourceId])
-  @@index([sourceType, sourceId])
-  @@index([payrollRunEmployeeId])
+  @@unique([payrollRunEmployeeId, sourceType, sourceId], map: "PRI_employee_source_key")
+  @@index([sourceType, sourceId], map: "PRI_source_idx")
+  @@index([payrollRunEmployeeId], map: "PRI_employee_idx")
 }
 
 // ─── Membership ───────────────────────────────────────────────────────────────
@@ -1213,7 +1216,7 @@ model UserMembership {
 
   // Frozen Coach Membership commission ownership.
   // legacy_coach_compensation_term | position_payroll_policy
-  coachMembershipCommissionSourceSnapshot        String?
+  coachMembershipCommissionSourceSnapshot        String? @db.VarChar(64)
   coachMembershipCompensationTermIdSnapshot      String?
   coachMembershipPositionTermIdSnapshot          String?
   coachMembershipPositionIdSnapshot              String?
@@ -1276,7 +1279,7 @@ model CoachMembershipEarning {
 
   // Frozen commission ownership.
   // legacy_coach_compensation_term | position_payroll_policy
-  commissionSourceSnapshot String?
+  commissionSourceSnapshot String? @db.VarChar(64)
 
   coachCompensationTermIdSnapshot String?
   positionTermIdSnapshot          String?
@@ -1385,6 +1388,8 @@ model AttendancePass {
   userId                      String
   userMembershipId            String?   @unique
   privateSessionApplicationId String?   @unique
+  offerBoxEntitlementId       String?   @unique
+  friendOfferEntitlementId    String?   @unique
   code                        String    @unique
   kind                        String // membership | private_session
   status                      String    @default("active") // active | inactive | revoked | expired
@@ -1396,6 +1401,8 @@ model AttendancePass {
   user                      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   userMembership            UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
   privateSessionApplication PrivateSessionApplication? @relation(fields: [privateSessionApplicationId], references: [id], onDelete: SetNull)
+  offerBoxEntitlement       OfferBoxEntitlement? @relation(fields: [offerBoxEntitlementId], references: [id], onDelete: Restrict)
+  friendOfferEntitlement    FriendOfferEntitlement? @relation("FriendOfferEntitlementPasses", fields: [friendOfferEntitlementId], references: [id], onDelete: Restrict)
   checkIns                  AttendanceCheckIn[]
 
   @@index([userId, status])
@@ -1650,6 +1657,8 @@ model Booking {
   userId           String
   scheduleId       String
   userMembershipId String?
+  offerBoxEntitlementId String?
+  friendOfferEntitlementId String?
   status           String    @default("confirmed") // confirmed | cancelled | attended | noshow
   paidAmount       Float     @default(0)
   paymentMethod    String    @default("wallet") // wallet | card | cash
@@ -1669,11 +1678,15 @@ model Booking {
   user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   schedule           Schedule                   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   userMembership     UserMembership?            @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  offerBoxEntitlement OfferBoxEntitlement? @relation("OfferBoxEntitlementBookings", fields: [offerBoxEntitlementId], references: [id], onDelete: SetNull)
+  friendOfferEntitlement FriendOfferEntitlement? @relation("FriendOfferEntitlementBookings", fields: [friendOfferEntitlementId], references: [id], onDelete: SetNull)
   attendanceCheckIn  AttendanceCheckIn?
   rescheduleRequests BookingRescheduleRequest[]
   classExchange      MembershipClassExchange?
 
   @@index([userMembershipId])
+  @@index([offerBoxEntitlementId])
+  @@index([friendOfferEntitlementId])
   @@index([userMembershipId, isMakeup, status])
 }
 
@@ -1978,6 +1991,7 @@ model PaymentTransaction {
   order                  Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
   analyticsEvents        AnalyticsEvent[]
   friendOfferParticipant FriendOfferParticipant?
+  independentFriendEntitlement FriendOfferEntitlement?
 
   @@index([userId, status])
   @@index([orderId])
@@ -2215,9 +2229,16 @@ model Offer {
   allowedClasses    OfferAllowedClass[]
   friendOfferConfig FriendOfferConfig?
   offerBoxPurchases OfferBoxPurchase[] @relation("OfferBoxPurchaseOffer")
+  popupOffers      PopupOffer[]
 }
 
 model OfferBoxPurchase {
+  // offer_box | direct_offer | package | friend_offer
+  commercialKind           String    @default("offer_box")
+
+  // Historical catalog identity, never a UserMembership owner.
+  // The purchased terms remain frozen in offerSnapshot.
+  catalogMembershipId      String?
   id                       String    @id @default(cuid())
   userId                   String
   offerId                  String?
@@ -2251,10 +2272,13 @@ model OfferBoxPurchase {
   offer                    Offer?    @relation("OfferBoxPurchaseOffer", fields: [offerId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
+  @@index([commercialKind, catalogMembershipId])
   @@index([offerId, status])
   @@index([status, holdExpiresAt])
   paymentTransaction      PaymentTransaction? @relation("OfferBoxPayment", fields: [paymentTransactionId], references: [id], onDelete: SetNull)
   redeemedUserMembership  UserMembership?      @relation("OfferBoxRedemption", fields: [redeemedUserMembershipId], references: [id], onDelete: SetNull)
+  entitlement OfferBoxEntitlement? @relation("OfferBoxPurchaseEntitlement")
+  staffCommission StaffCommission? @relation("OfferBoxStaffCommission")
 }
 
 
@@ -3166,6 +3190,7 @@ model StaffCommission {
   staffUserId         String
   staffReferralLinkId String?
   userMembershipId    String?   @unique
+  offerBoxPurchaseId String? @unique
   amount              Float
   status              String    @default("earned") // earned | settled | ineligible
   settledAt           DateTime?
@@ -3205,6 +3230,7 @@ model StaffCommission {
   staffUser         User               @relation("StaffCommissions", fields: [staffUserId], references: [id], onDelete: Cascade)
   staffReferralLink StaffReferralLink? @relation(fields: [staffReferralLinkId], references: [id], onDelete: SetNull)
   userMembership    UserMembership?    @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
+  offerBoxPurchase OfferBoxPurchase? @relation("OfferBoxStaffCommission", fields: [offerBoxPurchaseId], references: [id], onDelete: Restrict)
 
   @@index([staffUserId, status])
   @@index([staffUserId, status, createdAt])
@@ -4092,6 +4118,7 @@ model CommissionPayout {
   paymentMethod    String?
   paymentReference String?
   receiptUrl       String? @db.Text
+  receiptSha256    String? @unique @db.VarChar(64)
   notes            String? @db.Text
 
   // Optional originating business document,
@@ -4160,6 +4187,7 @@ model FriendOfferGroup {
   offerTermsSnapshot  String?   @db.LongText
   eligibilitySnapshot String?   @db.LongText
   matchingEnabled     Boolean   @default(false)
+  individualInvitesEnabled Boolean @default(false)
   expiresAt           DateTime
   finalizingAt        DateTime?
   completedAt         DateTime?
@@ -4169,6 +4197,7 @@ model FriendOfferGroup {
   config       FriendOfferConfig        @relation(fields: [configId], references: [id], onDelete: Cascade)
   creator      User                     @relation("FriendOfferGroupCreator", fields: [creatorUserId], references: [id], onDelete: Cascade)
   participants FriendOfferParticipant[]
+  individualInvites FriendOfferInviteLink[]
 
   @@index([configId, status])
   @@index([creatorUserId])
@@ -4187,6 +4216,7 @@ model FriendOfferParticipant {
   shareAmountMinor     Int
   paidAt               DateTime?
   attributionSnapshot  String?   @db.LongText
+  independentCommissionSnapshot String? @db.LongText
   joinedAt             DateTime  @default(now())
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -4195,11 +4225,73 @@ model FriendOfferParticipant {
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   userMembership      UserMembership?      @relation(fields: [userMembershipId], references: [id], onDelete: SetNull)
   paymentTransaction  PaymentTransaction?  @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+  independentEntitlement FriendOfferEntitlement?
+  independentCommissions FriendOfferCommission[]
   marketingConversion MarketingConversion?
 
   @@unique([groupId, userId])
   @@index([userId])
   @@index([groupId, status])
+}
+
+// Single-use invitations for new groups. Historical shared invitation links
+// remain valid only for groups with individualInvitesEnabled=false.
+// Financially independent friend-offer right; it never supersedes UserMembership.
+// One right per participant. Historical participant.userMembershipId is preserved.
+model FriendOfferEntitlement {
+  id                  String   @id @default(cuid())
+  participantId       String   @unique
+  userId              String
+  paymentTransactionId String  @unique
+  status              String   @default("pending_settlement")
+  startDate           DateTime
+  endDate             DateTime
+  totalSessions       Int?
+  eligibilitySnapshot String   @db.LongText
+  frozenTermsSnapshot String   @db.LongText
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  participant FriendOfferParticipant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  bookings Booking[] @relation("FriendOfferEntitlementBookings")
+  attendancePasses AttendancePass[] @relation("FriendOfferEntitlementPasses")
+
+  @@index([userId, status])
+}
+
+// Standalone frozen, exactly-once payable commission. No UserMembership FK.
+model FriendOfferCommission {
+  id String @id @default(cuid())
+  participantId String
+  beneficiaryType String
+  beneficiaryId String
+  amount Decimal @db.Decimal(18, 2)
+  status String @default("earned") // earned | settled | ineligible
+  settledAt DateTime?
+  snapshot String @db.LongText
+  createdAt DateTime @default(now())
+  participant FriendOfferParticipant @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  @@unique([participantId, beneficiaryType, beneficiaryId], map: "FriendOfferCommission_participant_beneficiary_uq")
+  @@index([beneficiaryId, status])
+}
+
+model FriendOfferInviteLink {
+  id               String   @id @default(cuid())
+  groupId          String
+  token            String   @unique @db.VarChar(128)
+  status           String   @default("pending") // pending | accepted | cancelled
+  acceptedByUserId String?
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  cancelledAt      DateTime?
+
+  group FriendOfferGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, status])
+  @@index([expiresAt, status])
 }
 
 // ─── Fixed Class Earnings ─────────────────────────────────────────────────────
@@ -4390,7 +4482,7 @@ model TraineeClassEarning {
 
   // Frozen commission ownership.
   // legacy_coach_compensation_term | position_payroll_policy
-  commissionSourceSnapshot String?
+  commissionSourceSnapshot String? @db.VarChar(64)
 
   // Historical legacy source, when applicable.
   coachCompensationTermId String?
@@ -4483,7 +4575,7 @@ model PrivateSessionEarning {
 
   // Frozen commission ownership.
   // legacy_coach_compensation_term | position_payroll_policy
-  commissionSourceSnapshot String?
+  commissionSourceSnapshot String? @db.VarChar(64)
 
   positionTermIdSnapshot          String?
   positionIdSnapshot              String?
@@ -4517,4 +4609,89 @@ model PrivateSessionEarning {
   @@index([positionPayrollPolicyIdSnapshot])
   @@index([calculatedById])
   @@index([finalizedById])
+}
+
+// Persistent Paymob membership recovery queue.
+// Financial writes remain exclusively in the verified payment service.
+// No cascade delete: retain recovery history for financial review.
+model PaymobRecoveryJob {
+  id                   String   @id @default(cuid())
+  paymentTransactionId String   @unique
+  status               String   @default("pending")
+  attempts             Int      @default(0)
+  nextAttemptAt        DateTime @default(now())
+  lockedUntil          DateTime?
+  leaseToken           String?
+  lastErrorCode        String?  @db.VarChar(191)
+  lastCheckedAt        DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([lockedUntil])
+  @@index([updatedAt])
+}
+
+
+// Persistent checkpoint for bounded Paymob recovery discovery.
+// A versioned compare-and-swap prevents stale workers from
+// overwriting a newer scan position.
+model PaymobRecoveryScanState {
+  id              String   @id
+  cursorCreatedAt DateTime?
+  cursorPaymentId String?
+  version         Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+// Independent redeemed Offer Box right.
+// Historical redeemedUserMembershipId remains unchanged for compatibility.
+model OfferBoxEntitlement {
+  id                        String   @id @default(cuid())
+  purchaseId                String   @unique
+  userId                    String
+  status                    String   @default("active")
+  startDate                 DateTime
+  endDate                   DateTime
+  totalSessions             Int?
+  // Immutable booking contract for recovery and exact-once scheduling.
+  bookingPatternSnapshot    String?  @db.LongText
+  eligibilitySnapshot       String   @db.LongText
+  allowedClassTypesSnapshot String?  @db.LongText
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  purchase OfferBoxPurchase @relation("OfferBoxPurchaseEntitlement", fields: [purchaseId], references: [id], onDelete: Restrict)
+  user     User             @relation("OfferBoxEntitlementOwner", fields: [userId], references: [id], onDelete: Cascade)
+  bookings Booking[]        @relation("OfferBoxEntitlementBookings")
+
+  @@index([userId, status])
+  attendancePass AttendancePass?
+}
+
+/// Single controllable popup configuration.
+model PopupSettings {
+  id               String   @id @default("main")
+  revision         Int      @default(0)
+  enabled          Boolean  @default(false)
+  ribbonText       String   @default("💗 PINK FRIDAY — لفترة محدودة")
+  endDate          DateTime?
+  showDelaySeconds Float    @default(2.5)
+  hideHours        Int      @default(24)
+  updatedAt        DateTime @updatedAt
+}
+
+/// Presentation configuration for existing offers.
+model PopupOffer {
+  id        String  @id @default(cuid())
+  offerId   String  @unique
+  imageUrl  String? @db.Text
+  badge     String? @db.VarChar(100)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, sortOrder])
 }

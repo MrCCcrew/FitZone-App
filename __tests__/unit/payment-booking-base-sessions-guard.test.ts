@@ -35,7 +35,7 @@ describe(
 
         const helperEnd =
           source.indexOf(
-            "/**\n * Shared activation helper",
+            "async function activatePaidMembershipTx(",
             helperStart,
           );
 
@@ -55,14 +55,8 @@ describe(
           "baseSessions: true",
         );
 
-        expect(helper).toContain(
-          [
-            "const sessionsCount =",
-            "    membership.baseSessions ??",
-            "    membership.totalSessions ??",
-            "    membership.membership.sessionsCount ??",
-            "    null;",
-          ].join("\n"),
+        expect(helper).toMatch(
+          /const\s+sessionsCount\s*=\s*membership\.baseSessions\s*\?\?\s*membership\.totalSessions\s*\?\?\s*membership\.membership\.sessionsCount\s*\?\?\s*null\s*;/,
         );
 
         const basePosition =

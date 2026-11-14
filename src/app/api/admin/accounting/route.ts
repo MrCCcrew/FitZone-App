@@ -1,3 +1,4 @@
+import { readOfferBoxCollection } from "@/lib/offer-box/collection-read-model";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
@@ -566,7 +567,203 @@ export async function GET(request: Request) {
   const bookingRevenue = round2(
     bookingRows.reduce((sum, row) => sum + row.paidAmount, 0),
   );
-  const clubRevenue = round2(membershipRevenue + bookingRevenue);
+  // Independent Offer Box financial read model.
+  // Collection date and revenue recognition date
+  // are deliberately separate events.
+
+  const offerPurchases = await db.offerBoxPurchase.findMany({
+    where: {
+      redeemedUserMembershipId: null,
+    },
+    select: {
+      id: true,
+      userId: true,
+      offerId: true,
+      status: true,
+      priceSnapshot: true,
+      currency: true,
+      offerSnapshot: true,
+      paymentTransactionId: true,
+      redeemedUserMembershipId: true,
+      paidAt: true,
+      createdAt: true,
+      user: {
+        select: { name: true },
+      },
+    },
+  });
+
+  const offerPaymentIds = offerPurchases.flatMap(
+    (purchase) =>
+      purchase.paymentTransactionId
+        ? [purchase.paymentTransactionId]
+        : [],
+  );
+
+  const offerPayments = offerPaymentIds.length
+    ? await db.paymentTransaction.findMany({
+        where: { id: { in: offerPaymentIds } },
+        select: {
+          id: true,
+          userId: true,
+          purpose: true,
+          provider: true,
+          status: true,
+          amount: true,
+          currency: true,
+          paidAt: true,
+          membershipId: true,
+          offerId: true,
+          metadata: true,
+        },
+      })
+    : [];
+
+  const offerPaymentMap = new Map(
+    offerPayments.map((payment) => [payment.id, payment]),
+  );
+
+  const independentCollections = offerPurchases.map(
+    (purchase) => ({
+      ...readOfferBoxCollection(
+        purchase,
+        purchase.paymentTransactionId
+          ? offerPaymentMap.get(purchase.paymentTransactionId) ?? null
+          : null,
+      ),
+      customerName: purchase.user.name ?? "—",
+    }),
+  );
+
+  const inReportPeriod = (value: string | null) => {
+    if (!value) return false;
+
+    const date = new Date(value);
+
+    if (!Number.isFinite(date.getTime())) return false;
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+
+    return true;
+  };
+
+  const offerCollectionRows = independentCollections.filter(
+    (row) =>
+      row.confirmedPaidAmount > 0 &&
+      inReportPeriod(row.paidAt),
+  );
+
+  const offerBoxCollected = round2(
+    offerCollectionRows.reduce(
+      (sum, row) => sum + row.confirmedPaidAmount,
+      0,
+    ),
+  );
+
+  // Use the existing posted activation journals.
+  // Do not treat a paid but unredeemed purchase
+  // as recognized service revenue.
+
+  const offerJournalIds = independentCollections
+    .filter(
+      (row) =>
+        row.status === "redeemed" &&
+        row.confirmedPaidAmount > 0,
+    )
+    .map((row) => row.id);
+
+  const offerJournals = offerJournalIds.length
+    ? await db.journal.findMany({
+        where: {
+          referenceType: "OfferBoxPurchase",
+          referenceId: { in: offerJournalIds },
+          status: "posted",
+          ...createDateRangeFilter("createdAt", from, to),
+        },
+        select: {
+          id: true,
+          referenceId: true,
+          createdAt: true,
+        },
+      })
+    : [];
+
+  const activationJournalIds = offerJournals.map(
+    (journal) => journal.id,
+  );
+
+  const offerRevenueEntries = activationJournalIds.length
+    ? await db.journalEntry.findMany({
+        where: {
+          journalId: { in: activationJournalIds },
+          account: { code: "4020" },
+        },
+        select: {
+          journalId: true,
+          debit: true,
+          credit: true,
+        },
+      })
+    : [];
+
+  const collectionById = new Map(
+    independentCollections.map((row) => [row.id, row]),
+  );
+
+  const offerRevenueRows = offerJournals.flatMap(
+    (journal) => {
+      const purchase = collectionById.get(journal.referenceId);
+
+      if (!purchase) return [];
+
+      const revenue = round2(
+        offerRevenueEntries
+          .filter((entry) => entry.journalId === journal.id)
+          .reduce(
+            (sum, entry) =>
+              sum + Number(entry.credit) - Number(entry.debit),
+            0,
+          ),
+      );
+
+      if (
+        revenue <= 0 ||
+        Math.round(revenue * 100) !==
+          Math.round(purchase.confirmedPaidAmount * 100)
+      ) {
+        return [];
+      }
+
+      return [{
+        ...purchase,
+        journalId: journal.id,
+        recognizedAt: journal.createdAt.toISOString(),
+        revenue,
+      }];
+    },
+  );
+
+  const offerBoxRevenue = round2(
+    offerRevenueRows.reduce(
+      (sum, row) => sum + row.revenue,
+      0,
+    ),
+  );
+
+  const offerBoxUnverifiedCount = independentCollections.filter(
+    (row) =>
+      row.needsFinancialReview &&
+      inReportPeriod(row.paidAt ?? row.createdAt),
+  ).length;
+
+  const offerBoxJournalReviewCount =
+    offerJournals.length - offerRevenueRows.length;
+
+  const clubRevenue = round2(
+    membershipRevenue +
+    bookingRevenue +
+    offerBoxRevenue,
+  );
   const walletBonusCost = round2(
     membershipRows.reduce((sum, row) => sum + row.walletBonus, 0),
   );
@@ -930,6 +1127,12 @@ export async function GET(request: Request) {
       summary: {
         membershipRevenue,
         bookingRevenue,
+        offerBoxCollected,
+        offerBoxRevenue,
+        offerBoxCollectionCount: offerCollectionRows.length,
+        offerBoxRevenueCount: offerRevenueRows.length,
+        offerBoxUnverifiedCount,
+        offerBoxJournalReviewCount,
         totalRevenue: clubRevenue,
         walletTopupCollected,
         walletBonusCost,
@@ -958,6 +1161,8 @@ export async function GET(request: Request) {
       },
       memberships: membershipRows,
       bookings: bookingRows,
+      offerBoxCollections: offerCollectionRows,
+      offerBoxRevenueRows: offerRevenueRows,
       expenses: clubExpenses.map((expense) => ({
         id: expense.id,
         category: expense.category,

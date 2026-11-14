@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { buildFriendOfferAccountCheckoutPayload } from "@/lib/friend-offer-account-checkout";
 import { useSearchParams } from "next/navigation";
 import { format, differenceInDays } from "date-fns";
 import { ar, enUS } from "date-fns/locale";
@@ -189,7 +190,7 @@ interface AccountData {
 
 type AttendancePassSummary = {
   id: string;
-  kind: "membership" | "private_session";
+  kind: "membership" | "private_session" | "offer_box";
   label: string;
   code: string;
   payload: string;
@@ -1863,7 +1864,11 @@ function AttendanceQrPanel() {
                 </div>
               </div>
               <span className="rounded-full bg-pink-500/15 px-2.5 py-1 text-[11px] font-bold text-pink-200">
-                {pass.kind === "membership" ? t("اشتراك", "Membership") : t("جلسة خاصة", "Private")}
+                {pass.kind === "membership"
+                  ? t("اشتراك", "Membership")
+                  : pass.kind === "offer_box"
+                    ? t("عرض مستقل", "Independent offer")
+                    : t("جلسة خاصة", "Private")}
               </span>
             </div>
 
@@ -6053,6 +6058,7 @@ type AccountFriendOffer = {
   participantStatus: string;
   shareAmountMinor: number;
   paidAt: string | null;
+  financialReviewRequired: boolean;
   membership: {
     id: string;
     status: string;
@@ -6076,6 +6082,8 @@ type AccountFriendOffer = {
   group: {
     id: string;
     token: string;
+    individualInvitesEnabled: boolean;
+    pendingInvites: Array<{ id: string; createdAt: string; expiresAt: string }>;
     status: string;
     matchingEnabled: boolean;
     requiredMembers: number;
@@ -6087,6 +6095,10 @@ type AccountFriendOffer = {
     id: string;
     title: string;
     titleEn: string | null;
+    requiresBirthDate: boolean;
+    requiresEgyptianNationalId: boolean;
+    minAgeYears: number | null;
+    maxAgeYears: number | null;
   };
 };
 
@@ -6183,7 +6195,12 @@ export default function AccountClient({ data }: { data: AccountData }) {
   const [friendOffers, setFriendOffers] = useState<AccountFriendOffer[]>([]);
   const [friendOffersLoading, setFriendOffersLoading] = useState(true);
   const [friendCheckoutId, setFriendCheckoutId] = useState<string | null>(null);
+  const [friendNationalIds, setFriendNationalIds] =
+    useState<Record<string, string>>({});
   const [friendOfferError, setFriendOfferError] = useState<string | null>(null);
+  const [friendInviteCopiedId, setFriendInviteCopiedId] =
+    useState<string | null>(null);
+  const [friendInviteCancellingId, setFriendInviteCancellingId] = useState<string | null>(null);
   const [friendCarryoverPreviews, setFriendCarryoverPreviews] = useState<
     Record<string, FriendOfferCarryoverPreview | null>
   >({});
@@ -6621,10 +6638,77 @@ export default function AccountClient({ data }: { data: AccountData }) {
     }
   };
 
+  const cancelSingleFriendInvite = async (friendOffer: AccountFriendOffer, invitationId: string) => {
+    if (friendInviteCancellingId) return;
+    if (!window.confirm(t("إلغاء رابط الدعوة ده؟ لن تتمكن صاحبته من استخدامه.",
+                           "Cancel this invitation link? It will stop working."))) return;
+    setFriendInviteCancellingId(invitationId);
+    try {
+      const response = await fetch("/api/me/friend-offers/invitations", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({groupId: friendOffer.group.id, invitationId}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "تعذر إلغاء الرابط.");
+      await loadFriendOffers();
+    } catch(error) {
+      setFriendOfferError(error instanceof Error ? error.message : "تعذر إلغاء الدعوة.");
+    } finally {setFriendInviteCancellingId(null);}
+  };
+
+  const copyFriendOfferInvite = async (
+    friendOffer: AccountFriendOffer,
+  ) => {
+    try {
+      let token = friendOffer.group.token;
+      if (friendOffer.group.individualInvitesEnabled) {
+        const response = await fetch("/api/me/friend-offers/invitations", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ groupId: friendOffer.group.id }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.invitation?.token) {
+          throw new Error(payload.error ?? "تعذر إنشاء رابط فردي.");
+        }
+        token = payload.invitation.token;
+        await loadFriendOffers();
+      }
+      const url = new URL("/", window.location.origin);
+      url.searchParams.set("page", "offers");
+      url.searchParams.set("friendOffer", token);
+
+      await navigator.clipboard.writeText(url.toString());
+
+      setFriendInviteCopiedId(friendOffer.participantId);
+      setFriendOfferError(null);
+    } catch {
+      setFriendInviteCopiedId(null);
+      setFriendOfferError(
+        t(
+          "تعذر نسخ رابط الدعوة. يمكنك فتح رابط الدعوة ومشاركته من المتصفح.",
+          "Could not copy the invite link. Open it and share it from your browser.",
+        ),
+      );
+    }
+  };
+
   const startFriendCheckout = async (
     friendOffer: AccountFriendOffer,
   ) => {
     if (friendCheckoutId) return;
+
+    if (
+      friendOffer.group.remainingPlaces > 0 ||
+      friendOffer.group.status !== "ready"
+    ) {
+      setFriendOfferError(
+        t(
+          `لا يمكن بدء الدفع قبل اكتمال المجموعة. عدد الصديقات الناقصات: ${friendOffer.group.remainingPlaces}.`,
+          `Payment is unavailable until the group is complete. Missing friends: ${friendOffer.group.remainingPlaces}.`,
+        ),
+      );
+      return;
+    }
 
     setFriendCheckoutId(friendOffer.participantId);
     setFriendOfferError(null);
@@ -6652,16 +6736,25 @@ export default function AccountClient({ data }: { data: AccountData }) {
       const returnUrl = `${window.location.origin}/account`;
       const cancelUrl = `${window.location.origin}/account`;
 
+      const checkoutBody = buildFriendOfferAccountCheckoutPayload({
+        token: friendOffer.group.token,
+        returnUrl,
+        cancelUrl,
+        requiresBirthDate: friendOffer.offer.requiresBirthDate,
+        requiresEgyptianNationalId:
+          friendOffer.offer.requiresEgyptianNationalId,
+        minAgeYears: friendOffer.offer.minAgeYears,
+        maxAgeYears: friendOffer.offer.maxAgeYears,
+        egyptianNationalId:
+          friendNationalIds[friendOffer.participantId] ?? "",
+      });
+
       const response = await fetch("/api/friend-offers/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          token: friendOffer.group.token,
-          returnUrl,
-          cancelUrl,
-        }),
+        body: JSON.stringify(checkoutBody),
       });
 
       const payload = (await response.json().catch(() => ({}))) as {
@@ -6676,6 +6769,12 @@ export default function AccountClient({ data }: { data: AccountData }) {
           payload.error || "تعذر بدء دفع عرض الصحاب.",
         );
       }
+
+      setFriendNationalIds((current) => {
+        const next = { ...current };
+        delete next[friendOffer.participantId];
+        return next;
+      });
 
       if (payload.status === "paid") {
         await loadFriendOffers();
@@ -7200,6 +7299,80 @@ export default function AccountClient({ data }: { data: AccountData }) {
                         </span>
                       </div>
 
+                      {friendOffer.group.remainingPlaces > 0 &&
+                      ["waiting", "ready"].includes(
+                        friendOffer.group.status,
+                      ) &&
+                      !isActivated ? (
+                        <div
+                          role="status"
+                          className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 p-4 text-sm text-amber-100"
+                        >
+                          <div className="font-black text-amber-100">
+                            {t(
+                              friendOffer.group.remainingPlaces === 1
+                                ? "مجموعتك ناقصها صديقة واحدة"
+                                : friendOffer.group.remainingPlaces === 2
+                                  ? "مجموعتك ناقصها صديقتين"
+                                  : `مجموعتك ناقصها ${friendOffer.group.remainingPlaces} صديقات`,
+                              `Your group needs ${friendOffer.group.remainingPlaces} more friend(s)`,
+                            )}
+                          </div>
+
+                          <p className="mt-2 leading-6">
+                            {t(
+                              isPaid
+                                ? "حصتك مدفوعة ومحفوظة. ادعي باقي الصديقات، ولن يُطلب منك دفعها مرة ثانية. تفعيل الاشتراكات بعد سداد الجميع."
+                                : "ادعي الصديقات الناقصات أولًا. الدفع مش متاح قبل اكتمال المجموعة، والاشتراكات تتفعل بعد سداد الجميع.",
+                              isPaid
+                                ? "Your share is already paid and recorded. Invite the remaining friends; you will not be charged for it again. Memberships activate after everyone pays."
+                                : "Invite the missing friends first. Payment becomes available only when the group is full. Memberships activate after everyone pays.",
+                            )}
+                          </p>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(!friendOffer.group.individualInvitesEnabled ||
+                              friendOffer.role === "creator") ? <button
+                              type="button"
+                              onClick={() =>
+                                void copyFriendOfferInvite(friendOffer)
+                              }
+                              className="rounded-lg border border-amber-200/30 bg-white/10 px-3 py-2 font-bold text-white hover:bg-white/15"
+                            >
+                              {friendInviteCopiedId === friendOffer.participantId
+                                ? t("تم نسخ رابط الدعوة", "Invite link copied")
+                                : t("إنشاء ونسخ رابط دعوة", "Create and copy invite link")}
+                            </button> : null}
+
+                            {!friendOffer.group.individualInvitesEnabled ? <a
+                              href={`/?page=offers&friendOffer=${encodeURIComponent(friendOffer.group.token)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-lg border border-white/20 px-3 py-2 font-bold text-white"
+                            >
+                              {t("فتح رابط الدعوة", "Open invitation")}
+                            </a> : null}
+                          </div>
+                          {friendOffer.role === "creator" &&
+                            friendOffer.group.individualInvitesEnabled &&
+                            friendOffer.group.pendingInvites.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {friendOffer.group.pendingInvites.map((invite, index) => (
+                                  <div key={invite.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/15 p-2 text-xs">
+                                    <span>{t(`دعوة معلقة ${index + 1}`, `Pending invitation ${index + 1}`)}</span>
+                                    <button type="button"
+                                      disabled={friendInviteCancellingId !== null}
+                                      onClick={() => void cancelSingleFriendInvite(friendOffer, invite.id)}
+                                      className="rounded-lg border border-red-400/40 px-3 py-1.5 text-red-200 disabled:opacity-50">
+                                      {friendInviteCancellingId === invite.id ? t("جارٍ الإلغاء", "Cancelling") : t("إلغاء الدعوة", "Cancel invitation")}
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                        </div>
+                      ) : null}
+
                       {carryoverPreview?.eligible &&
                       carryoverPreview.carryoverSessions > 0 ? (
                         <div className="mt-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-3 text-xs text-emerald-100">
@@ -7277,7 +7450,32 @@ export default function AccountClient({ data }: { data: AccountData }) {
                         </div>
                       ) : null}
 
-                      {isPaid ? (
+                      {friendOffer.financialReviewRequired ? (
+                        <div
+                          role="status"
+                          className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 p-3 text-sm text-amber-100"
+                        >
+                          <div className="font-black">
+                            {isPaid
+                              ? t(
+                                  "تم تسجيل سداد حصتك، لكن المجموعة انتهت أو أُغلقت قبل التفعيل.",
+                                  "Your share is recorded as paid, but the group closed before activation.",
+                                )
+                              : t(
+                                  "توجد محاولة دفع لم تُحسم حالتها المالية بعد انتهاء المجموعة.",
+                                  "A payment attempt remains unresolved after the group closed.",
+                                )}
+                          </div>
+                          <div className="mt-2">
+                            {t(
+                              "الحالة تحتاج مراجعة مالية. لن نطلب منك دفعًا جديدًا قبل التأكد من نتيجة العملية.",
+                              "Financial review is required. No new payment will be requested until the transaction is resolved.",
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {isPaid && !friendOffer.financialReviewRequired ? (
                         <div className="mt-3 text-sm font-bold text-emerald-300">
                           ✓{" "}
                           {t(
@@ -7321,7 +7519,9 @@ export default function AccountClient({ data }: { data: AccountData }) {
                       ) : null}
                     </div>
 
-                    {!isPaid ? (
+                    {!isPaid &&
+                    !isActivated &&
+                    !friendOffer.financialReviewRequired ? (
                       <div className="flex shrink-0 flex-col gap-2">
                           {friendOffer.role === "creator" &&
                           ["waiting", "ready"].includes(
@@ -7355,10 +7555,39 @@ export default function AccountClient({ data }: { data: AccountData }) {
                             </button>
                           ) : null}
 
+                        {friendOffer.offer.requiresEgyptianNationalId ? (
+                          <label className="block text-xs font-bold text-pink-100">
+                            {t(
+                              "الرقم القومي المصري للتحقق من سن عرض الطلبة",
+                              "Egyptian national ID for student offer age verification",
+                            )}
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              maxLength={14}
+                              value={friendNationalIds[friendOffer.participantId] ?? ""}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                  .replace(/[^0-9٠-٩۰-۹]/g, "")
+                                  .slice(0, 14);
+                                setFriendNationalIds((current) => ({
+                                  ...current,
+                                  [friendOffer.participantId]: value,
+                                }));
+                              }}
+                              placeholder={t("14 رقمًا", "14 digits")}
+                              className="mt-2 w-full rounded-xl border border-white/20 bg-black/25 px-3 py-2 text-white outline-none focus:border-pink-300"
+                            />
+                          </label>
+                        ) : null}
+
                         <button
                         type="button"
                         disabled={
                           friendCheckoutId === friendOffer.participantId ||
+                          friendOffer.group.remainingPlaces > 0 ||
+                          friendOffer.group.status !== "ready" ||
                           (!checkoutStarted &&
                             (carryoverPreviewLoading ||
                               !carryoverPreviewLoaded ||
@@ -7376,12 +7605,17 @@ export default function AccountClient({ data }: { data: AccountData }) {
                               "جارٍ تجهيز الدفع...",
                               "Preparing payment...",
                             )
-                          : checkoutStarted
+                          : friendOffer.group.remainingPlaces > 0
                             ? t(
-                                "استكمال الدفع",
-                                "Continue payment",
+                                "كمّلي المجموعة أولًا",
+                                "Complete your group first",
                               )
-                            : t(
+                            : checkoutStarted
+                              ? t(
+                                  "استكمال الدفع",
+                                  "Continue payment",
+                                )
+                              : t(
                                 "ادفعي حصتك",
                                 "Pay your share",
                               )}

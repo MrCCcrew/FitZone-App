@@ -241,6 +241,17 @@ export async function DELETE(req: Request) {
   try {
     const result = await db.$transaction(
       async (tx) => {
+        // Checkout claims and member removal share the same lock.
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM FriendOfferGroup
+          WHERE id = ${groupId}
+          FOR UPDATE
+        `;
+
+        if (locked.length !== 1) {
+          return { kind: "NOT_FOUND" as const };
+        }
+
         const group = await tx.friendOfferGroup.findUnique({
           where: { id: groupId },
           include: {
@@ -293,6 +304,27 @@ export async function DELETE(req: Request) {
 
         if (participant.status === "cancelled") {
           return { kind: "ALREADY_CANCELLED" as const };
+        }
+
+        // Once ANY member starts checkout, do not remove
+        // another member and strand an existing payment.
+        const groupPaymentStarted = group.participants.some(
+          (row) =>
+            [
+              "checkout_claiming",
+              "checkout_started",
+              "paid",
+              "activated",
+            ].includes(row.status) ||
+            row.paymentTransactionId != null ||
+            row.userMembershipId != null ||
+            ["pending", "requires_action", "paid"].includes(
+              row.paymentTransaction?.status ?? "",
+            ),
+        );
+
+        if (groupPaymentStarted) {
+          return { kind: "ECONOMIC_COMMITMENT" as const };
         }
 
         const hasEconomicCommitment =
@@ -472,6 +504,10 @@ export async function POST(req: Request) {
   try {
     const result = await db.$transaction(
       async (tx) => {
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM FriendOfferGroup WHERE id=${groupId} FOR UPDATE
+        `;
+        if (locked.length !== 1) return { kind: "NOT_FOUND" as const };
         const group = await tx.friendOfferGroup.findUnique({
           where: { id: groupId },
           include: {
@@ -703,6 +739,18 @@ export async function POST(req: Request) {
 
         const nextCount = targetActiveParticipants.length + 1;
 
+        if (group.individualInvitesEnabled) {
+          const pendingLinks = await tx.friendOfferInviteLink.findMany({
+            where: { groupId: group.id, status: "pending" },
+            select: { id: true }, orderBy: { createdAt: "asc" },
+          });
+          const openSeats = Math.max(0, group.config.requiredMembers - nextCount);
+          const stale = pendingLinks.slice(openSeats).map(link => link.id);
+          if (stale.length) await tx.friendOfferInviteLink.updateMany({
+            where: { id: { in: stale }, groupId: group.id, status: "pending" },
+            data: { status: "cancelled", cancelledAt: now },
+          });
+        }
         const nextStatus =
           nextCount >= group.config.requiredMembers
             ? "ready"

@@ -12,6 +12,9 @@ vi.mock("@/lib/db", () => ({
     paymentTransaction: {
       findUnique: vi.fn(),
     },
+    offerBoxPurchase: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -51,6 +54,23 @@ describe("Paymob session expiry and ownership regression", () => {
     vi.clearAllMocks();
     (getCurrentAppUser as Mock).mockResolvedValue({ id: "user-1" });
     (db.paymentTransaction.findUnique as Mock).mockResolvedValue(transaction());
+    (db.offerBoxPurchase.findUnique as Mock).mockResolvedValue({
+      id: "purchase-1",
+      userId: "user-1",
+      paymentTransactionId: "tx-own",
+      status: "pending_payment",
+      holdExpiresAt: new Date(Date.now() + 300_000),
+      offerSnapshot: JSON.stringify({
+        ageEligibility: {
+          requiresBirthDate: false,
+          verificationMethod: "account_birth_date",
+          minAgeYears: null,
+          maxAgeYears: null,
+          ageYearsAtPurchase: null,
+          validatedAt: new Date().toISOString(),
+        },
+      }),
+    });
   });
 
   it("rejects unauthenticated requests without looking up the transaction", async () => {

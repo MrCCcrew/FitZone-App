@@ -56,14 +56,35 @@ function getDatabaseUrl() {
    * This prevents an accidental deployment/config mix from connecting one
    * environment to the other environment's database.
    */
+  const r13Requested =
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1";
+
+  if (
+    r13Requested &&
+    (process.env.APP_ENV !== "test" || process.env.NODE_ENV !== "test")
+  ) {
+    throw new Error("[TEST_SAFETY] R13 mode requires test environment");
+  }
+
   if (process.env.APP_ENV === "test") {
-    if (
-      database !== "fitzone_test" ||
-      url.hostname !== "127.0.0.1" ||
-      decodeURIComponent(url.username) !== "fitzone_test_user"
-    ) {
+    const allowedTestDatabase = r13Requested
+      ? (
+          process.env.NODE_ENV === "test" &&
+          url.protocol === "mysql:" &&
+          url.hostname === "127.0.0.1" &&
+          url.port === "3306" &&
+          database === "fitzone_final_release_r13_test" &&
+          decodeURIComponent(url.username) === "fitzone_r13_user"
+        )
+      : (
+          database === "fitzone_test" &&
+          url.hostname === "127.0.0.1" &&
+          decodeURIComponent(url.username) === "fitzone_test_user"
+        );
+
+    if (!allowedTestDatabase) {
       throw new Error(
-        `[TEST_SAFETY] Refusing database connection to "${database}" as "${decodeURIComponent(url.username)}" at "${url.hostname}". Expected fitzone_test as fitzone_test_user on 127.0.0.1.`,
+        "[TEST_SAFETY] Refusing database connection outside the selected test database",
       );
     }
   } else if (process.env.APP_ENV === "staging") {

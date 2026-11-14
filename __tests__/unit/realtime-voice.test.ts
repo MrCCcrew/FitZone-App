@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { configuredCoachVoice, configuredTtsVoice, realtimeVoiceEnabled } from "@/lib/ai-coach/voice/config";
 import { openAiRealtimeProvider, realtimeToolDefinitions } from "@/lib/ai-coach/voice/realtime-provider";
 import { understandCoachMessage } from "@/lib/ai-coach/understanding";
-import { isForbiddenRealtimeToolRequest } from "@/app/api/chat/voice/realtime/tool/route";
-import { selectVoiceText } from "@/app/api/chat/voice/speak/route";
+import { isForbiddenRealtimeToolRequest } from "@/lib/ai-coach/voice/route-helpers";
+import { selectVoiceText } from "@/lib/ai-coach/voice/route-helpers";
 import { openAiTtsProvider } from "@/lib/ai-coach/voice/tts-provider";
 
 const saved = { key: process.env.OPENAI_API_KEY, voice: process.env.AI_COACH_VOICE_ENABLED, realtime: process.env.AI_COACH_REALTIME_VOICE_ENABLED, realtimeModel: process.env.AI_COACH_REALTIME_MODEL, fallbackModel: process.env.AI_COACH_REALTIME_FALLBACK_MODEL, realtimeVoice: process.env.AI_COACH_REALTIME_VOICE, ttsVoice: process.env.AI_COACH_TTS_VOICE };

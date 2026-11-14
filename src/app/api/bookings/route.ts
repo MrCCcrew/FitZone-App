@@ -5,7 +5,12 @@ import {
 import { NextResponse } from "next/server";
 import { cairoCalendarDateKey, scheduleSlotInstant } from "@/lib/fitzone-time";
 import { getCurrentAppUser } from "@/lib/app-session";
-import { db } from "@/lib/db";
+import { asDbTransactionClient, db } from "@/lib/db";
+import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
+import {
+  parseEligibilityPolicySnapshot,
+  isClassAllowedByEligibilitySnapshot,
+} from "@/lib/get-eligible-classes";
 import { isBookingOperational } from "@/lib/booking-operational";
 import { assertUserCanBookClassByHealth } from "@/lib/booking/health-booking-policy";
 import {
@@ -17,6 +22,267 @@ import {
 } from "@/lib/membership-class-eligibility";
 import { sumMembershipBookingUnits } from "@/lib/membership-session-units";
 import { reverseMembershipClassExchange } from "@/lib/membership-class-exchange";
+import { bookIndependentFriendOfferClass } from "@/lib/payments/friend-offer-independent-booking";
+
+async function bookIndependentOfferClass(
+  userId: string,
+  entitlementId: string,
+  scheduleId: string,
+) {
+  const result = await db.$transaction(async (tx) => {
+    await lockMembershipLifecycleUserTx(
+      asDbTransactionClient(tx),
+      userId,
+    );
+
+    await tx.$queryRaw`
+      SELECT id FROM OfferBoxEntitlement
+      WHERE id = ${entitlementId}
+      FOR UPDATE
+    `;
+
+    const entitlement = await tx.offerBoxEntitlement.findUnique({
+      where: { id: entitlementId },
+    });
+
+    if (!entitlement || entitlement.userId !== userId) {
+      return { ok: false as const, code: "OFFER_ENTITLEMENT_NOT_FOUND", status: 404 };
+    }
+
+    if (entitlement.status !== "active") {
+      return { ok: false as const, code: "OFFER_ENTITLEMENT_NOT_ACTIVE", status: 409 };
+    }
+
+    const purchase = await tx.offerBoxPurchase.findUnique({
+      where: { id: entitlement.purchaseId },
+      select: {
+        userId: true,
+        status: true,
+        redeemedUserMembershipId: true,
+        paidAt: true,
+      },
+    });
+
+    if (
+      !purchase ||
+      purchase.userId !== userId ||
+      purchase.status !== "redeemed" ||
+      purchase.redeemedUserMembershipId !== null ||
+      purchase.paidAt === null
+    ) {
+      return { ok: false as const, code: "OFFER_ENTITLEMENT_IDENTITY_INVALID", status: 409 };
+    }
+
+    const eligibility = parseEligibilityPolicySnapshot(
+      entitlement.eligibilitySnapshot,
+    );
+
+    if (!eligibility || !entitlement.bookingPatternSnapshot) {
+      return { ok: false as const, code: "OFFER_BOOKING_CONTRACT_REVIEW_REQUIRED", status: 409 };
+    }
+
+    await tx.$queryRaw`
+      SELECT id FROM Schedule
+      WHERE id = ${scheduleId}
+      FOR UPDATE
+    `;
+
+    const schedule = await tx.schedule.findUnique({
+      where: { id: scheduleId },
+      include: { class: true },
+    });
+
+    if (!schedule || !schedule.isActive || !schedule.class.isActive) {
+      return { ok: false as const, code: "SCHEDULE_UNAVAILABLE", status: 404 };
+    }
+
+    const now = new Date();
+    const instant = scheduleSlotInstant(schedule.date, schedule.time);
+    const day = cairoCalendarDateKey(instant);
+    const start = cairoCalendarDateKey(entitlement.startDate);
+    const end = cairoCalendarDateKey(entitlement.endDate);
+
+    if (
+      !Number.isFinite(instant.getTime()) ||
+      instant.getTime() <= now.getTime() ||
+      cairoCalendarDateKey(now) < start ||
+      cairoCalendarDateKey(now) > end ||
+      day < start ||
+      day > end
+    ) {
+      return { ok: false as const, code: "SCHEDULE_OUTSIDE_OFFER_PERIOD", status: 409 };
+    }
+
+    if (!(await isClassAllowedByEligibilitySnapshot(
+      eligibility, schedule.classId, tx,
+    ))) {
+      return { ok: false as const, code: "CLASS_NOT_INCLUDED_IN_OFFER", status: 409 };
+    }
+
+    try {
+      await assertUserCanBookClassByHealth(
+        tx, userId, schedule.class.type,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "HEALTH_RESTRICTION_BLOCKED") {
+        return { ok: false as const, code: "HEALTH_RESTRICTION_BLOCKED", status: 409 };
+      }
+      throw error;
+    }
+
+    const existing = await tx.booking.findMany({
+      where: {
+        userId,
+        offerBoxEntitlementId: entitlement.id,
+        userMembershipId: null,
+        status: { in: ["confirmed", "attended", "noshow"] },
+        NOT: {
+          status: "noshow",
+          rescheduleRequests: {
+            some: {
+              requestType: "past_absence_makeup",
+              status: "approved",
+            },
+          },
+        },
+      },
+      select: {
+        status: true,
+        entitlementUnits: true,
+        schedule: {
+          select: {
+            date: true,
+            time: true,
+            classId: true,
+          },
+        },
+      },
+    });
+
+    const used = sumMembershipBookingUnits(
+      existing,
+      ["confirmed", "attended", "noshow"],
+    );
+
+    if (
+      entitlement.totalSessions !== null &&
+      used >= entitlement.totalSessions
+    ) {
+      return { ok: false as const, code: "OFFER_SESSIONS_EXHAUSTED", status: 409 };
+    }
+
+    const sameDay = existing.filter((booking) =>
+      cairoCalendarDateKey(
+        scheduleSlotInstant(
+          booking.schedule.date,
+          booking.schedule.time,
+        ),
+      ) === day,
+    );
+
+    const limit = getFrozenMaxSessionsPerDay(
+      entitlement.bookingPatternSnapshot, 2,
+    );
+
+    if (sameDay.length >= limit) {
+      return { ok: false as const, code: "DAILY_SESSION_LIMIT_REACHED", status: 409 };
+    }
+
+    if (
+      getFrozenRequireDistinctClassesPerDay(
+        entitlement.bookingPatternSnapshot,
+      ) &&
+      sameDay.some(
+        (booking) => booking.schedule.classId === schedule.classId,
+      )
+    ) {
+      return { ok: false as const, code: "DISTINCT_CLASS_REQUIRED", status: 409 };
+    }
+
+    const conflict = await tx.booking.findFirst({
+      where: {
+        userId,
+        status: { in: ["confirmed", "attended", "noshow"] },
+        schedule: {
+          date: schedule.date,
+          time: schedule.time,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (conflict) {
+      return { ok: false as const, code: "BOOKING_TIME_CONFLICT", status: 409 };
+    }
+
+    const seat = await tx.schedule.updateMany({
+      where: {
+        id: scheduleId,
+        isActive: true,
+        availableSpots: { gt: 0 },
+      },
+      data: { availableSpots: { decrement: 1 } },
+    });
+
+    if (seat.count !== 1) {
+      return { ok: false as const, code: "SCHEDULE_FULL", status: 409 };
+    }
+
+    const booking = await tx.booking.create({
+      data: {
+        userId,
+        scheduleId,
+        userMembershipId: null,
+        offerBoxEntitlementId: entitlement.id,
+        status: "confirmed",
+        paidAmount: 0,
+        paymentMethod: "offer_box",
+        entitlementUnits: 1,
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId,
+        title: `تم حجز ${schedule.class.name}`,
+        body: "تم تأكيد الحجز من حصص العرض المشتَرى.",
+        type: "success",
+      },
+    });
+
+    return { ok: true as const, bookingId: booking.id };
+  });
+
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      OFFER_ENTITLEMENT_NOT_FOUND: "العرض غير موجود.",
+      OFFER_ENTITLEMENT_NOT_ACTIVE: "العرض غير ساري.",
+      OFFER_SESSIONS_EXHAUSTED: "تم تخصيص جميع حصص العرض.",
+      SCHEDULE_OUTSIDE_OFFER_PERIOD: "الموعد خارج مدة العرض.",
+      CLASS_NOT_INCLUDED_IN_OFFER: "الكلاس غير مشمول ضمن العرض.",
+      SCHEDULE_FULL: "لا توجد أماكن متاحة.",
+      BOOKING_TIME_CONFLICT: "لديكِ حجز آخر في نفس الموعد.",
+      DAILY_SESSION_LIMIT_REACHED: "وصلتِ للحد اليومي للحصص.",
+      DISTINCT_CLASS_REQUIRED: "يجب اختيار كلاس مختلف.",
+      HEALTH_RESTRICTION_BLOCKED: "الحصة غير متاحة وفق الاستبيان الصحي.",
+    };
+
+    return NextResponse.json(
+      {
+        error: messages[result.code] ?? "تعذر استخدام العرض للحجز.",
+        code: result.code,
+      },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    bookingId: result.bookingId,
+    offerBoxEntitlementId: entitlementId,
+    message: "تم تأكيد الحجز من العرض بنجاح.",
+  });
+}
 
 export async function POST(req: Request) {
   try {
@@ -30,9 +296,43 @@ export async function POST(req: Request) {
       );
     }
 
-    const { scheduleId } = (await req.json()) as { scheduleId?: string };
-    if (!scheduleId) {
+    const { scheduleId, offerBoxEntitlementId, friendOfferEntitlementId } =
+      (await req.json()) as {
+        scheduleId?: string;
+        offerBoxEntitlementId?: string;
+        friendOfferEntitlementId?: string;
+      };
+    if (!scheduleId || typeof scheduleId !== "string") {
       return NextResponse.json({ error: "موعد الحجز مطلوب" }, { status: 400 });
+    }
+
+    if (offerBoxEntitlementId !== undefined && friendOfferEntitlementId !== undefined) {
+      return NextResponse.json({ error: "لا يمكن استخدام حقين لنفس الحجز", code: "MULTIPLE_ENTITLEMENTS" }, { status: 400 });
+    }
+
+    if (friendOfferEntitlementId !== undefined) {
+      if (typeof friendOfferEntitlementId !== "string" || !friendOfferEntitlementId.trim()) {
+        return NextResponse.json({ error: "معرّف حق عرض الصحاب غير صالح", code: "INVALID_FRIEND_ENTITLEMENT" }, { status: 400 });
+      }
+      return bookIndependentFriendOfferClass(userId, friendOfferEntitlementId.trim(), scheduleId);
+    }
+
+    if (offerBoxEntitlementId !== undefined) {
+      if (
+        typeof offerBoxEntitlementId !== "string" ||
+        !offerBoxEntitlementId.trim()
+      ) {
+        return NextResponse.json(
+          { error: "معرّف العرض غير صالح.", code: "INVALID_OFFER_ENTITLEMENT" },
+          { status: 400 },
+        );
+      }
+
+      return await bookIndependentOfferClass(
+        userId,
+        offerBoxEntitlementId.trim(),
+        scheduleId,
+      );
     }
 
     const schedule = await db.schedule.findUnique({
@@ -230,6 +530,10 @@ export async function POST(req: Request) {
 
     const bookingClaim =
       await db.$transaction(async (tx) => {
+        await lockMembershipLifecycleUserTx(
+          asDbTransactionClient(tx),
+          userId,
+        );
         /*
          * Shared entitlement lock.
          *
@@ -423,9 +727,9 @@ export async function POST(req: Request) {
           await tx.booking.findFirst({
             where: {
               userId,
-              scheduleId,
+              schedule: { date: schedule.date, time: schedule.time },
               status: {
-                in: ["confirmed", "attended"],
+                in: ["confirmed", "attended", "noshow"],
               },
             },
             select: {

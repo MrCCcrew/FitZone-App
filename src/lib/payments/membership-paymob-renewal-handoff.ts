@@ -51,6 +51,10 @@ function samePurchase(
  * A crash or ambiguous provider response intentionally leaves the
  * payment blocked for reconciliation rather than risking double payment.
  */
+function isApprovedPaymobMembershipRenewalRelease(): boolean {
+  return process.env.PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED === "true";
+}
+
 export async function maybeRenewPendingMembershipCheckout(input: {
   userId: string;
   fingerprint: SubscribeAttemptFingerprint;
@@ -117,12 +121,16 @@ export async function maybeRenewPendingMembershipCheckout(input: {
      * payment as "retrying" or contact Paymob. Enable only after verified
      * provider acceptance and a separately approved release gate.
      */
-    if (process.env.PAYMOB_MEMBERSHIP_INTENTION_RENEWAL_ENABLED !== "true") {
-      return { kind: "blocked" } as const;
-    }
+
 
     const membership = memberships[0];
 
+
+    // Disabled by default. Do not read or mutate payment state,
+    // or contact Paymob, unless renewal is explicitly enabled.
+    if (!isApprovedPaymobMembershipRenewalRelease()) {
+      return { kind: "blocked" } as const;
+    }
 
     const payments = await tx.paymentTransaction.findMany({
       where: {
@@ -143,6 +151,8 @@ export async function maybeRenewPendingMembershipCheckout(input: {
         expiresAt: true,
       },
     });
+
+
 
     // Multiple payment owners, or no payment record, require review.
     if (payments.length !== 1) {

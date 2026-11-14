@@ -963,3 +963,51 @@ export async function postAllocatedReturnJournal(
     entries
   );
 }
+
+/**
+ * Independent Offer Box activation revenue.
+ *
+ * Compatibility policy:
+ * - Retain the existing club-service revenue GL account.
+ * - Recognize at redemption, matching the previous Offer Box behavior.
+ * - Reference the actual purchase, never a synthetic membership.
+ *
+ * The caller must have authoritative Paymob payment proof and execute
+ * under the purchase/payment transaction locks.
+ */
+export async function postOfferBoxActivationJournal(
+  tx: TransactionClient,
+  purchaseId: string,
+  paidAmount: number,
+  internal?: {walletAmount:number;pointsAmount:number},
+): Promise<string | null> {
+  const amount=round2(paidAmount);
+  const wallet=round2(internal?.walletAmount??0);
+  const points=round2(internal?.pointsAmount??0);
+  const total=round2(amount+wallet+points);
+  if(!purchaseId.trim() || [paidAmount,wallet,points,total].some(v=>!Number.isFinite(v)||v<0||!Number.isSafeInteger(toPiastres(v))) || total<=0) throw new Error("OFFER_BOX_JOURNAL_INVALID_AMOUNT");
+  const entries:JournalLineItem[]=[];
+  if(amount>0)entries.push({accountCode:GL_ACCOUNTS.PAYMOB_CLEARING,debit:amount,credit:0,description:"Offer Box payment collected via Paymob"});
+  if(wallet>0)entries.push({accountCode:GL_ACCOUNTS.WALLET_LIABILITY,debit:wallet,credit:0,description:"Independent commercial wallet redemption"});
+  if(points>0)entries.push({accountCode:GL_ACCOUNTS.REWARD_POINTS_LIABILITY,debit:points,credit:0,description:"Independent commercial points redemption"});
+  entries.push({accountCode:GL_ACCOUNTS.SUBSCRIPTION_REVENUE,debit:0,credit:total,description:"Independent Offer Box club-service revenue"});
+  return postJournal(tx,"OfferBoxPurchase",purchaseId,`Offer Box activation - ${purchaseId.slice(-8)}`,entries);
+}
+
+/** Exact-once independent Friend Offer club-service sale. */
+export async function postIndependentFriendOfferJournal(
+  tx: TransactionClient,
+  paymentTransactionId: string,
+  amountMinor: number,
+): Promise<string | null> {
+  if (!paymentTransactionId.trim() || !Number.isSafeInteger(amountMinor) || amountMinor <= 0)
+    throw new Error("FRIEND_INDEPENDENT_GL_INVALID_ECONOMICS");
+  const amount = amountMinor / 100;
+  return postJournal(tx, "FriendOfferPayment", paymentTransactionId,
+    `Friend offer independent sale - ${paymentTransactionId.slice(-8)}`, [
+      {accountCode: GL_ACCOUNTS.PAYMOB_CLEARING, debit: amount, credit: 0,
+       description: "Verified Friend Offer Paymob settlement"},
+      {accountCode: GL_ACCOUNTS.SUBSCRIPTION_REVENUE, debit: 0, credit: amount,
+       description: "Independent friend-offer club service"},
+    ]);
+}

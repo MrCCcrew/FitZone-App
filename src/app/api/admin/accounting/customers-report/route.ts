@@ -1,3 +1,4 @@
+import { readOfferBoxCollection } from "@/lib/offer-box/collection-read-model";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminFeature } from "@/lib/admin-guard";
@@ -122,6 +123,84 @@ export async function GET(req: Request) {
       : Promise.resolve([]),
   ]);
 
+  // Offer Box collections are independent of UserMembership.
+  // Read the durable purchase and its exact linked payment.
+  const offerPurchases = await db.offerBoxPurchase.findMany({
+    where: {
+      userId: { in: userIds },
+      redeemedUserMembershipId: null,
+    },
+    select: {
+      id: true,
+      userId: true,
+      offerId: true,
+      status: true,
+      priceSnapshot: true,
+      currency: true,
+      offerSnapshot: true,
+      paymentTransactionId: true,
+      redeemedUserMembershipId: true,
+      paidAt: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const offerPaymentIds = offerPurchases.flatMap(
+    (purchase) =>
+      purchase.paymentTransactionId
+        ? [purchase.paymentTransactionId]
+        : [],
+  );
+
+  const offerPayments = offerPaymentIds.length
+    ? await db.paymentTransaction.findMany({
+        where: { id: { in: offerPaymentIds } },
+        select: {
+          id: true,
+          userId: true,
+          purpose: true,
+          provider: true,
+          status: true,
+          amount: true,
+          currency: true,
+          paidAt: true,
+          membershipId: true,
+          offerId: true,
+          metadata: true,
+        },
+      })
+    : [];
+
+  const offerPaymentMap = new Map(
+    offerPayments.map((payment) => [payment.id, payment]),
+  );
+
+  const offerCollectionsByUser = new Map<
+    string,
+    ReturnType<typeof readOfferBoxCollection>[]
+  >();
+
+  for (const purchase of offerPurchases) {
+    const payment = purchase.paymentTransactionId
+      ? offerPaymentMap.get(purchase.paymentTransactionId) ?? null
+      : null;
+
+    const collection = readOfferBoxCollection(purchase, payment);
+
+    const date = new Date(
+      collection.paidAt ?? collection.createdAt,
+    );
+
+    if (dateFrom && date < dateFrom) continue;
+    if (dateTo && date > dateTo) continue;
+
+    const rows = offerCollectionsByUser.get(purchase.userId) ?? [];
+
+    rows.push(collection);
+    offerCollectionsByUser.set(purchase.userId, rows);
+  }
+
   const paidEvidenceByMembership = new Map<string, typeof paidMembershipPayments>();
   for (const evidence of paidMembershipPayments) {
     if (!evidence.membershipId) continue;
@@ -197,7 +276,23 @@ export async function GET(req: Request) {
         : u.memberships;
 
       // Exclude users with no memberships in the period when filtering
-      if (hasDateFilter && filteredMemberships.length === 0) return null;
+      const offerBoxPurchases =
+        offerCollectionsByUser.get(u.id) ?? [];
+
+      if (
+        hasDateFilter &&
+        filteredMemberships.length === 0 &&
+        offerBoxPurchases.length === 0
+      ) return null;
+
+      const totalOfferBoxPaid = offerBoxPurchases.reduce(
+        (sum, purchase) => sum + purchase.confirmedPaidAmount,
+        0,
+      );
+
+      const unverifiedOfferBoxCount = offerBoxPurchases.filter(
+        (purchase) => purchase.needsFinancialReview,
+      ).length;
 
       const memberships = filteredMemberships.map(m => {
         const financialTruth = getConfirmedMembershipPayment(u.id, m);
@@ -305,9 +400,12 @@ export async function GET(req: Request) {
         rewardPoints:  u.rewardPoints?.points ?? 0,
         rewardTier:    u.rewardPoints?.tier ?? "bronze",
 
-        totalPaid: totalMembershipPaid + totalBookingPaid,
+        totalPaid: totalMembershipPaid + totalBookingPaid + totalOfferBoxPaid,
         totalMembershipPaid,
         totalBookingPaid,
+        totalOfferBoxPaid,
+        offerBoxPurchases,
+        unverifiedOfferBoxCount,
         unverifiedMembershipCount,
         totalDiscounts,
 

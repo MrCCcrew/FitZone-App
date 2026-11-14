@@ -151,19 +151,17 @@ async function cleanupPolicies() {
 }
 
 beforeAll(async () => {
-  await db.positionPayrollPolicy.deleteMany({
-    where: {
-      position: {
-        code: TEST_NORMAL_CODE,
-      },
-    },
+  const existingNormal = await db.position.findUnique({
+    where: { code: TEST_NORMAL_CODE },
   });
 
-  await db.position.deleteMany({
-    where: {
-      code: TEST_NORMAL_CODE,
-    },
+  const existingHead = await db.position.findUnique({
+    where: { code: HEAD_CODE },
   });
+
+  if (existingNormal || existingHead) {
+    throw new Error("R15ZQ_PAYROLL_SETTINGS_EXISTING_POSITION");
+  }
 
   const normal =
     await db.position.create({

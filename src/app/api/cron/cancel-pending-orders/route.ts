@@ -26,6 +26,13 @@ const RETRY_CLAIM_STATUS = "retrying";
  *   to updatePaymentTransactionStatus so there is one terminal-failure path.
  */
 export async function GET(req: Request) {
+  // Preview deployments must not execute background jobs.
+  if (process.env.FITZONE_DISABLE_BACKGROUND_JOBS === "1") {
+    return Response.json(
+      { error: "Background jobs disabled" },
+      { status: 403 },
+    );
+  }
   if (process.env.APP_ENV === "staging") {
     return Response.json(
       { error: "Cron disabled in staging" },

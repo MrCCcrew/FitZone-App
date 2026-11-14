@@ -31,6 +31,11 @@ export async function markFriendOfferParticipantPaid(
         paidAt: true,
         membershipId: true,
         metadata: true,
+        offerId: true,
+        amount: true,
+        currency: true,
+        purpose: true,
+        provider: true,
       },
     });
 
@@ -72,8 +77,71 @@ export async function markFriendOfferParticipantPaid(
         groupId: true,
         paymentTransactionId: true,
         status: true,
+        shareAmountMinor: true,
+        group: {
+          select: {
+            config: {
+              select: { offerId: true },
+            },
+          },
+        },
       },
     });
+
+    /*
+     * A verified paid webhook may arrive before the checkout route
+     * links its locally-created PaymentTransaction to the participant.
+     * Repair only the unique claimed participant with exact economics
+     * and server-owned payment identity.
+     */
+    if (
+      participant &&
+      participant.status === "checkout_claiming" &&
+      participant.paymentTransactionId === null
+    ) {
+      const validProof =
+        payment.userId === participant.userId &&
+        participant.groupId === groupId &&
+        payment.offerId === participant.group.config.offerId &&
+        payment.provider === "paymob" &&
+        payment.purpose === "membership" &&
+        payment.currency.toUpperCase() === "EGP" &&
+        Number.isSafeInteger(participant.shareAmountMinor) &&
+        Math.abs(
+          payment.amount * 100 - participant.shareAmountMinor
+        ) < 0.000001 &&
+        metadata.friendShareAmountMinor === participant.shareAmountMinor;
+
+      if (!validProof) {
+        throw new Error("FRIEND_OFFER_EARLY_PAID_PROOF_INVALID");
+      }
+
+      const repaired = await tx.friendOfferParticipant.updateMany({
+        where: {
+          id: participant.id,
+          groupId,
+          userId: payment.userId,
+          paymentTransactionId: null,
+          status: "checkout_claiming",
+        },
+        data: {
+          paymentTransactionId: payment.id,
+          status: "paid",
+          paidAt: payment.paidAt ?? new Date(),
+        },
+      });
+
+      if (repaired.count !== 1) {
+        throw new Error("FRIEND_OFFER_EARLY_PAID_REPAIR_RACE");
+      }
+
+      return {
+        handled: true,
+        alreadyPaid: false,
+        participantId: participant.id,
+        groupId: participant.groupId,
+      };
+    }
 
     if (
       !participant ||

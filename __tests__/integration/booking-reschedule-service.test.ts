@@ -449,7 +449,7 @@ describe("BookingRescheduleService — real fitzone_test integration", () => {
       .split(":")
       .map(Number);
 
-    legacyUtcInterpretation.setHours(
+    legacyUtcInterpretation.setUTCHours(
       hour,
       minute,
       0,

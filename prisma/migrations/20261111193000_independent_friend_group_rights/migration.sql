@@ -1,0 +1,6 @@
+-- V5 consolidation: historical V4 migration content was duplicated by
+-- 20261111193000_friend_offer_independent_finance_booking_attendance.
+-- The earlier-named migration is the single authoritative DDL source.
+-- This migration intentionally performs NO DDL, data writes, or backfills.
+-- Retained to preserve migration-file identity and ordering for source audit.
+-- STOP before production: check _prisma_migrations history and drift separately.
