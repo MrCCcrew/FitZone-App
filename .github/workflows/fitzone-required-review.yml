@@ -176,47 +176,54 @@ jobs:
 
       - name: Match ephemeral MySQL collation to historical migrations
         shell: bash
+        env:
+          CI_MYSQL_CONTAINER: ${{ job.services.mysql.id }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const { PrismaClient } = require("@prisma/client");
-          const url = new URL(process.env.DATABASE_URL || "");
-          const allowed = [
-            "fitzone_test",
-            "fitzone_final_release_r13_test"
-          ];
-          const database = url.pathname.slice(1);
-          if (
-            process.env.NODE_ENV !== "test" ||
-            process.env.APP_ENV !== "test" ||
-            url.protocol !== "mysql:" ||
-            url.hostname !== "127.0.0.1" ||
-            url.port !== "3306" ||
-            !allowed.includes(database)
-          ) throw Error("UNSAFE_COLLATION_TARGET_REFUSED");
 
-          const prisma = new PrismaClient();
-          (async () => {
-            await prisma.$executeRawUnsafe(
-              "ALTER DATABASE `" + database +
-              "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-            );
-            const rows = await prisma.$queryRawUnsafe(
-              "SELECT DEFAULT_COLLATION_NAME AS collation_name " +
-              "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
-              database
-            );
-            if (
-              rows.length !== 1 ||
-              rows[0].collation_name !== "utf8mb4_unicode_ci"
-            ) throw Error("CI_COLLATION_VERIFICATION_FAILED");
-            console.log("CI_MYSQL_COLLATION=PASS");
-          })().catch(error => {
-            console.error(error.message);
-            process.exitCode = 1;
-          }).finally(() => prisma.$disconnect());
-          NODE
+          if [[ -z "${CI_MYSQL_CONTAINER:-}" ]]; then
+            echo "CI_MYSQL_CONTAINER_MISSING"
+            exit 1
+          fi
 
+          case "$DATABASE_URL" in
+            mysql://fitzone_test_user:ci_fixture_only@127.0.0.1:3306/fitzone_test)
+              database=fitzone_test
+              ;;
+            mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test)
+              database=fitzone_final_release_r13_test
+              ;;
+            *)
+              echo "UNSAFE_COLLATION_TARGET_REFUSED"
+              exit 1
+              ;;
+          esac
+
+          if [[ "$DATABASE_URL" != "$TEST_DATABASE_URL" ||
+                "$NODE_ENV" != "test" ||
+                "$APP_ENV" != "test" ]]; then
+            echo "CI_MYSQL_IDENTITY_REFUSED"
+            exit 1
+          fi
+
+          docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot \
+            -e "ALTER DATABASE $database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+          actual="$(docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot --batch --skip-column-names \
+            -e "SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$database'")"
+
+          if [[ "$actual" != "utf8mb4_unicode_ci" ]]; then
+            echo "CI_COLLATION_VERIFICATION_FAILED"
+            exit 1
+          fi
+
+          echo "CI_MYSQL_COLLATION=PASS"
       - name: Apply migrations to ephemeral CI database only
         run: node node_modules/prisma/build/index.js migrate deploy --config prisma.config.ts
 
@@ -305,47 +312,54 @@ jobs:
 
       - name: Match ephemeral MySQL collation to historical migrations
         shell: bash
+        env:
+          CI_MYSQL_CONTAINER: ${{ job.services.mysql.id }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const { PrismaClient } = require("@prisma/client");
-          const url = new URL(process.env.DATABASE_URL || "");
-          const allowed = [
-            "fitzone_test",
-            "fitzone_final_release_r13_test"
-          ];
-          const database = url.pathname.slice(1);
-          if (
-            process.env.NODE_ENV !== "test" ||
-            process.env.APP_ENV !== "test" ||
-            url.protocol !== "mysql:" ||
-            url.hostname !== "127.0.0.1" ||
-            url.port !== "3306" ||
-            !allowed.includes(database)
-          ) throw Error("UNSAFE_COLLATION_TARGET_REFUSED");
 
-          const prisma = new PrismaClient();
-          (async () => {
-            await prisma.$executeRawUnsafe(
-              "ALTER DATABASE `" + database +
-              "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-            );
-            const rows = await prisma.$queryRawUnsafe(
-              "SELECT DEFAULT_COLLATION_NAME AS collation_name " +
-              "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
-              database
-            );
-            if (
-              rows.length !== 1 ||
-              rows[0].collation_name !== "utf8mb4_unicode_ci"
-            ) throw Error("CI_COLLATION_VERIFICATION_FAILED");
-            console.log("CI_MYSQL_COLLATION=PASS");
-          })().catch(error => {
-            console.error(error.message);
-            process.exitCode = 1;
-          }).finally(() => prisma.$disconnect());
-          NODE
+          if [[ -z "${CI_MYSQL_CONTAINER:-}" ]]; then
+            echo "CI_MYSQL_CONTAINER_MISSING"
+            exit 1
+          fi
 
+          case "$DATABASE_URL" in
+            mysql://fitzone_test_user:ci_fixture_only@127.0.0.1:3306/fitzone_test)
+              database=fitzone_test
+              ;;
+            mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test)
+              database=fitzone_final_release_r13_test
+              ;;
+            *)
+              echo "UNSAFE_COLLATION_TARGET_REFUSED"
+              exit 1
+              ;;
+          esac
+
+          if [[ "$DATABASE_URL" != "$TEST_DATABASE_URL" ||
+                "$NODE_ENV" != "test" ||
+                "$APP_ENV" != "test" ]]; then
+            echo "CI_MYSQL_IDENTITY_REFUSED"
+            exit 1
+          fi
+
+          docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot \
+            -e "ALTER DATABASE $database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+          actual="$(docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot --batch --skip-column-names \
+            -e "SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$database'")"
+
+          if [[ "$actual" != "utf8mb4_unicode_ci" ]]; then
+            echo "CI_COLLATION_VERIFICATION_FAILED"
+            exit 1
+          fi
+
+          echo "CI_MYSQL_COLLATION=PASS"
       - name: Apply migrations to ephemeral CI database only
         run: node node_modules/prisma/build/index.js migrate deploy --config prisma.config.ts
 
