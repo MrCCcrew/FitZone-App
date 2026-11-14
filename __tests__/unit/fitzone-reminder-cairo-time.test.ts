@@ -39,6 +39,19 @@ describe("FitZone Cairo reminder scheduling", () => {
     expect(scheduleWeekday(anchor("2026-11-14"))).toBe(6);
   });
 
+  it.each([
+    ["2026-04-23", "2026-04-23T16:00:00.000Z"],
+    ["2026-04-24", "2026-04-24T15:00:00.000Z"],
+    ["2026-10-29", "2026-10-29T15:00:00.000Z"],
+    ["2026-10-30", "2026-10-30T16:00:00.000Z"],
+  ])(
+    "handles Egypt DST start/end for %s",
+    (date, expected) => {
+      expect(
+        scheduleSlotInstant(anchor(date), "18:00").toISOString(),
+      ).toBe(expected);
+    },
+  );
   it("wires the reminder route to the existing Cairo helpers", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/app/api/cron/send-reminders/route.ts"),
