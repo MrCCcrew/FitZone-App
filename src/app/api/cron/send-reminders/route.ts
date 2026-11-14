@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendOnePush } from "@/lib/push";
+import { scheduleSlotInstant, scheduleWeekday } from "@/lib/fitzone-time";
 
 const DEFAULT_REMINDER = {
   title: "تذكير بموعدك في FitZone 💪",
@@ -86,9 +87,10 @@ export async function GET(req: Request) {
 
   for (const booking of bookings) {
     // Compute exact slot datetime
-    const slotDate = new Date(booking.schedule.date);
-    const [h, m] = booking.schedule.time.split(":").map(Number);
-    slotDate.setHours(isNaN(h) ? 0 : h, isNaN(m) ? 0 : m, 0, 0);
+    const slotDate = scheduleSlotInstant(
+      new Date(booking.schedule.date),
+      booking.schedule.time,
+    );
 
     if (slotDate < windowStart || slotDate > windowEnd) continue;
 
@@ -108,7 +110,7 @@ export async function GET(req: Request) {
       continue;
     }
 
-    const dayLabel = DAY_NAMES[slotDate.getDay()] ?? "";
+    const dayLabel = DAY_NAMES[scheduleWeekday(new Date(booking.schedule.date))] ?? "";
     const className   = booking.schedule.class.name;
     const trainerName = booking.schedule.class.trainer?.name ?? "";
     const title = template.title;
