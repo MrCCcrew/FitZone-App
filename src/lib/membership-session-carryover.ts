@@ -192,6 +192,18 @@ export async function previewMembershipSessionCarryoverTx(
     );
   }
 
+  // Packages and offers own their purchased rights independently.
+  // They never receive a regular subscription carryover balance.
+  if (
+    target.kind !== "subscription" ||
+    target.offerId !== null
+  ) {
+    return emptyPreview(
+      "no_source",
+      target.baseSessions,
+    );
+  }
+
   if (
     target.baseSessions === null ||
     target.baseSessions <= 0
@@ -219,6 +231,10 @@ export async function previewMembershipSessionCarryoverTx(
       where: {
         userId,
         status: "active",
+        offerId: null,
+        membership: {
+          kind: "subscription",
+        },
         ...(input.excludeMembershipId
           ? {
               id: {
@@ -253,7 +269,8 @@ export async function previewMembershipSessionCarryoverTx(
   const paidSources =
     activeMemberships.filter(
       (membership) =>
-        membership.membership.kind !== "trial",
+        membership.membership.kind === "subscription" &&
+        membership.offerId === null,
     );
 
   if (paidSources.length === 0) {
@@ -797,4 +814,44 @@ export async function applyMembershipSessionCarryoverTx(
     reason: "applied",
     appliedAt,
   };
+}
+
+
+/**
+ * Supersession belongs exclusively to ordinary subscriptions.
+ *
+ * The caller must already hold the user's membership lifecycle lock.
+ * Packages, offers and trials neither supersede nor get superseded.
+ * Historical bookings and commercial ownership are not modified here.
+ */
+export async function supersedeOrdinarySubscriptionsTx(
+  tx: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    targetMembershipId: string;
+    targetKind: string;
+    targetOfferId: string | null;
+  },
+): Promise<number> {
+  if (
+    input.targetKind !== "subscription" ||
+    input.targetOfferId !== null
+  ) {
+    return 0;
+  }
+
+  const result = await tx.userMembership.updateMany({
+    where: {
+      userId: input.userId,
+      status: "active",
+      id: { not: input.targetMembershipId },
+      offerId: null,
+      membership: {
+        kind: "subscription",
+      },
+    },
+    data: { status: "expired" },
+  });
+
+  return result.count;
 }

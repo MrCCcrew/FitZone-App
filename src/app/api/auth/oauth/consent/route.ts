@@ -3,10 +3,15 @@ import { createAppSessionToken, APP_SESSION_COOKIE, getAppSessionCookieOptions }
 import { findOrCreateOAuthUser, parsePendingOAuthToken } from "@/lib/oauth";
 import { db } from "@/lib/db";
 import { getClientIp } from "@/lib/rate-limit";
+import { FRIEND_OFFER_RETURN_COOKIE, normalizeFriendOfferReturn, withFriendOfferReturn } from "@/lib/friend-offer-auth-return";
 import { buildReferralIdentityHashes } from "@/lib/referral-identity";
 import { evaluateReferralAntiAbuse } from "@/lib/referral-anti-abuse";
 
 const CLEAR_COOKIES = (res: NextResponse) => {
+  res.cookies.set(FRIEND_OFFER_RETURN_COOKIE, "", {
+    httpOnly: true, sameSite: "lax", path: "/", maxAge: 0,
+    secure: process.env.NODE_ENV === "production",
+  });
   res.cookies.set("oauth_pending_profile", "", { httpOnly: true, maxAge: 0, path: "/" });
   res.cookies.set("oauth_pending_session", "", { httpOnly: true, maxAge: 0, path: "/" });
   res.cookies.set("oauth_ref_code",        "", { httpOnly: true, maxAge: 0, path: "/" });
@@ -19,6 +24,7 @@ const CLEAR_COOKIES = (res: NextResponse) => {
 };
 
 export async function POST(req: NextRequest) {
+  const friendReturn = normalizeFriendOfferReturn(req.cookies.get(FRIEND_OFFER_RETURN_COOKIE)?.value ?? null);
   const pending = parsePendingOAuthToken(req.cookies.get("oauth_pending_profile")?.value);
   if (!pending) {
     return NextResponse.json({ error: "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مرة أخرى." }, { status: 400 });
@@ -185,7 +191,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (result.requiresVerification && result.user.email) {
-    const redirectTo = `/verify-email?email=${encodeURIComponent(result.user.email)}${result.emailSent ? "" : "&sent=0"}`;
+    const redirectTo = withFriendOfferReturn(`/verify-email?email=${encodeURIComponent(result.user.email)}${result.emailSent ? "" : "&sent=0"}`, friendReturn);
     return CLEAR_COOKIES(NextResponse.json({ ok: true, redirectTo }));
   }
 
@@ -196,7 +202,7 @@ export async function POST(req: NextRequest) {
     role: result.user.role as "member" | "admin" | "staff" | "trainer" | "accountant",
   });
 
-  const res = NextResponse.json({ ok: true });
+  const res = NextResponse.json({ ok: true, redirectTo: friendReturn ?? "/" });
   res.cookies.set(APP_SESSION_COOKIE, token, getAppSessionCookieOptions());
   return CLEAR_COOKIES(res);
 }

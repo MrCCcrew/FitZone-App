@@ -41,6 +41,29 @@ type BookingPlanInput = {
   };
 };
 
+type BookingOwner =
+  | { kind: "membership"; id: string }
+  | { kind: "offer_box"; id: string };
+
+type OfferBoxBookingPlanInput =
+  Omit<BookingPlanInput, "userMembershipId"> & {
+    offerBoxEntitlementId: string;
+  };
+
+type SharedBookingPlanInput =
+  Omit<BookingPlanInput, "userMembershipId"> & {
+    owner: BookingOwner;
+  };
+
+function bookingOwnerFields(owner: BookingOwner) {
+  return owner.kind === "membership"
+    ? { userMembershipId: owner.id }
+    : {
+        userMembershipId: null,
+        offerBoxEntitlementId: owner.id,
+      };
+}
+
 type BookingPattern = {
   classId: string;
   time: string;
@@ -188,16 +211,45 @@ const patternKey = (
   dayOfWeek: number,
 ) => `${classId}|${time}|${dayOfWeek}`;
 
-export async function applyMembershipBookingPlanTx({
+export async function applyMembershipBookingPlanTx(
+  input: BookingPlanInput,
+) {
+  const { userMembershipId, ...rest } = input;
+
+  return applyBookingPlanForOwnerTx({
+    ...rest,
+    owner: { kind: "membership", id: userMembershipId },
+  });
+}
+
+export async function applyOfferBoxBookingPlanTx(
+  input: OfferBoxBookingPlanInput,
+) {
+  const { offerBoxEntitlementId, ...rest } = input;
+
+  return applyBookingPlanForOwnerTx({
+    ...rest,
+    owner: { kind: "offer_box", id: offerBoxEntitlementId },
+  });
+}
+
+async function applyBookingPlanForOwnerTx({
   tx,
   userId,
-  userMembershipId,
+  owner,
   startDate,
   endDate,
   selectedScheduleIds: rawSelectedScheduleIds,
   source,
   plan,
-}: BookingPlanInput) {
+}: SharedBookingPlanInput) {
+  const ownerDelegate =
+    owner.kind === "membership"
+      ? tx.userMembership
+      : tx.offerBoxEntitlement;
+
+  const ownerFields = bookingOwnerFields(owner);
+
   const selectedScheduleIds = [
     ...new Set(
       rawSelectedScheduleIds.filter(
@@ -214,10 +266,37 @@ export async function applyMembershipBookingPlanTx({
    * mutable plan terms.
    */
   const preexistingContractRecord =
-    await tx.userMembership.findUnique({
-      where: { id: userMembershipId },
-      select: { bookingPatternSnapshot: true, eligibilitySnapshot: true },
+    await ownerDelegate.findUnique({
+      where: { id: owner.id },
+      select: {
+        bookingPatternSnapshot: true,
+        eligibilitySnapshot: true,
+        ...(owner.kind === "offer_box"
+          ? {
+              userId: true,
+              status: true,
+              startDate: true,
+              endDate: true,
+              totalSessions: true,
+            }
+          : {}),
+      },
     });
+
+  if (
+    owner.kind === "offer_box" &&
+    (
+      !preexistingContractRecord ||
+      preexistingContractRecord.userId !== userId ||
+      preexistingContractRecord.status !== "active" ||
+      preexistingContractRecord.startDate.getTime() !== startDate.getTime() ||
+      preexistingContractRecord.endDate.getTime() !== endDate.getTime() ||
+      preexistingContractRecord.totalSessions !== plan.sessionsCount ||
+      (source.type !== "offer" && source.type !== "package")
+    )
+  ) {
+    throw new Error("OFFER_BOX_BOOKING_OWNER_CONTRACT_MISMATCH");
+  }
 
   const hasFrozenBookingContract =
     Boolean(preexistingContractRecord?.bookingPatternSnapshot);
@@ -232,6 +311,13 @@ export async function applyMembershipBookingPlanTx({
     parseEligibilityPolicySnapshot(
       preexistingContractRecord?.eligibilitySnapshot,
     );
+
+  if (
+    owner.kind === "offer_box" &&
+    !preexistingFrozenEligibility
+  ) {
+    throw new Error("OFFER_BOX_FROZEN_ELIGIBILITY_REQUIRED");
+  }
 
   /*
    * Seed validation is purchase-time validation only.
@@ -409,8 +495,8 @@ export async function applyMembershipBookingPlanTx({
    * re-reading mutable offer/membership configuration.
    */
   const existingMembershipSnapshot =
-    await tx.userMembership.findUnique({
-      where: { id: userMembershipId },
+    await ownerDelegate.findUnique({
+      where: { id: owner.id },
       select: {
         eligibilitySnapshot: true,
         bookingPatternSnapshot: true,
@@ -436,6 +522,10 @@ export async function applyMembershipBookingPlanTx({
     } catch {
       // Legacy/invalid booking contracts fall back to source capture below.
     }
+  }
+
+  if (owner.kind === "offer_box" && !frozenEligibility) {
+    throw new Error("OFFER_BOX_FROZEN_ELIGIBILITY_REQUIRED");
   }
 
   if (!frozenEligibility) {
@@ -537,7 +627,7 @@ export async function applyMembershipBookingPlanTx({
   const existingWeek1ForCurrentMembership =
     await tx.booking.findMany({
       where: {
-        userMembershipId,
+        ...ownerFields,
         scheduleId: {
           in: purchaseValidationScheduleIds,
         },
@@ -562,7 +652,8 @@ export async function applyMembershipBookingPlanTx({
    * The release and capacity validation stay inside this transaction.
    */
   for (const schedule of week1Schedules) {
-    const staleSeedBookings = await tx.booking.findMany({
+    const staleSeedBookings = owner.kind === "membership"
+      ? await tx.booking.findMany({
       where: {
         userId,
         status: "confirmed",
@@ -582,7 +673,8 @@ export async function applyMembershipBookingPlanTx({
         id: true,
         scheduleId: true,
       },
-    });
+    })
+      : [];
 
     for (const staleBooking of staleSeedBookings) {
       const released = await tx.booking.updateMany({
@@ -742,14 +834,14 @@ export async function applyMembershipBookingPlanTx({
    * membership.
    */
   const currentSnapshot =
-    await tx.userMembership.findUnique({
-      where: { id: userMembershipId },
+    await ownerDelegate.findUnique({
+      where: { id: owner.id },
       select: { bookingPatternSnapshot: true },
     });
 
   let bookingContract = parseBookingContract(
     currentSnapshot?.bookingPatternSnapshot,
-    userMembershipId,
+    owner.id,
     selectedScheduleIds,
   );
 
@@ -764,7 +856,7 @@ export async function applyMembershipBookingPlanTx({
       bookingContract.source.id !== source.id
     ) {
       throw new Error(
-        `Booking contract source mismatch for membership ${userMembershipId}`,
+        `Booking contract source mismatch for membership ${owner.id}`,
       );
     }
   } else {
@@ -777,9 +869,9 @@ export async function applyMembershipBookingPlanTx({
      * updateMany + bookingPatternSnapshot:null prevents two simultaneous
      * webhook/recovery requests from overwriting each other's contract.
      */
-    const frozen = await tx.userMembership.updateMany({
+    const frozen = await ownerDelegate.updateMany({
       where: {
-        id: userMembershipId,
+        id: owner.id,
         bookingPatternSnapshot: null,
       },
       data: {
@@ -796,8 +888,8 @@ export async function applyMembershipBookingPlanTx({
        * contract. Never continue with our losing candidate.
        */
       const winner =
-        await tx.userMembership.findUnique({
-          where: { id: userMembershipId },
+        await ownerDelegate.findUnique({
+          where: { id: owner.id },
           select: {
             bookingPatternSnapshot: true,
           },
@@ -805,22 +897,22 @@ export async function applyMembershipBookingPlanTx({
 
       bookingContract = parseBookingContract(
         winner?.bookingPatternSnapshot,
-        userMembershipId,
+        owner.id,
         selectedScheduleIds,
       );
 
       if (!bookingContract) {
         throw new Error(
-          `Booking contract race resolution failed for membership ${userMembershipId}`,
+          `Booking contract race resolution failed for membership ${owner.id}`,
         );
       }
     }
   }
 
-  const ensured = await ensureMembershipBookingsFromContractTx({
+  const ensured = await ensureBookingPlanForOwnerTx({
     tx,
     userId,
-    userMembershipId,
+    owner,
     startDate,
     endDate,
     bookingContract,
@@ -838,7 +930,7 @@ export async function applyMembershipBookingPlanTx({
 type EnsureFromContractInput = {
   tx: any;
   userId: string;
-  userMembershipId: string;
+  owner: BookingOwner;
   startDate: Date;
   endDate: Date;
   bookingContract: BookingContract;
@@ -847,15 +939,16 @@ type EnsureFromContractInput = {
 
 const MAKEUP_GRACE_DAYS = 30;
 
-async function ensureMembershipBookingsFromContractTx({
+async function ensureBookingPlanForOwnerTx({
   tx,
   userId,
-  userMembershipId,
+  owner,
   startDate,
   endDate,
   bookingContract,
   bookingCutoff,
 }: EnsureFromContractInput) {
+  const ownerFields = bookingOwnerFields(owner);
   const patterns = bookingContract.patterns;
 
   const patternSet = new Set(
@@ -985,7 +1078,7 @@ async function ensureMembershipBookingsFromContractTx({
   const existingEntitlementBookings =
     await tx.booking.findMany({
       where: {
-        userMembershipId,
+        ...ownerFields,
         status: {
           in: countedStatuses,
         },
@@ -1113,7 +1206,8 @@ async function ensureMembershipBookingsFromContractTx({
      * Only confirmed ordinary reservations are releasable here.
      * Legacy, make-up, class-exchange, attended and noshow bookings remain untouched.
      */
-    const staleOrdinaryBookings = await tx.booking.findMany({
+    const staleOrdinaryBookings = owner.kind === "membership"
+      ? await tx.booking.findMany({
       where: {
         userId,
         status: "confirmed",
@@ -1133,7 +1227,8 @@ async function ensureMembershipBookingsFromContractTx({
         id: true,
         scheduleId: true,
       },
-    });
+    })
+      : [];
 
     for (const staleBooking of staleOrdinaryBookings) {
       const released = await tx.booking.updateMany({
@@ -1180,7 +1275,7 @@ async function ensureMembershipBookingsFromContractTx({
 
     const owned = await tx.booking.findFirst({
       where: {
-        userMembershipId,
+        ...ownerFields,
         scheduleId: schedule.id,
         status: {
           in: countedStatuses,
@@ -1258,10 +1353,10 @@ async function ensureMembershipBookingsFromContractTx({
       data: {
         userId,
         scheduleId: schedule.id,
-        userMembershipId,
+        ...ownerFields,
         status: "confirmed",
-        paidAmount: schedule.class.price,
-        paymentMethod: "cash",
+        paidAmount: owner.kind === "offer_box" ? 0 : schedule.class.price,
+        paymentMethod: owner.kind === "offer_box" ? "offer_box" : "cash",
         isMakeup: options.isMakeup === true,
         makeupReason:
           options.isMakeup === true
@@ -1586,7 +1681,7 @@ async function ensureMembershipBookingsFromContractTx({
   const actualBookings =
     await tx.booking.findMany({
       where: {
-        userMembershipId,
+        ...ownerFields,
         status: {
           in: countedStatuses,
         },
@@ -1840,10 +1935,10 @@ export async function ensureMembershipBookingsTx({
     );
   }
 
-  return ensureMembershipBookingsFromContractTx({
+  return ensureBookingPlanForOwnerTx({
     tx,
     userId: membership.userId,
-    userMembershipId: membership.id,
+    owner: { kind: "membership", id: membership.id },
     startDate: membership.startDate,
     endDate: membership.endDate,
     bookingContract,

@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireAdminPermission } from "@/lib/admin-authorization-server";
 import { reverseMembershipClassExchange } from "@/lib/membership-class-exchange";
-import { db } from "@/lib/db";
+import { asDbTransactionClient, db } from "@/lib/db";
+import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
 import { logAudit } from "@/lib/audit-context";
 import { isBookingOperational } from "@/lib/booking-operational";
 import { ensureMembershipAttendancePass } from "@/lib/attendance";
 import { markClassAttendance } from "@/lib/attendance-service";
+import {
+  applyIndependentOfferAdminBookingAction,
+  BookingRescheduleDomainError,
+} from "@/lib/booking-reschedule-service";
 import { scheduleSlotInstant } from "@/lib/fitzone-time";
 import { getAdminSession } from "@/lib/admin-session";
 
@@ -83,6 +88,22 @@ export async function GET(req: Request) {
       user: true,
       schedule: { include: { class: { include: { trainer: true } } } },
       userMembership: { include: { membership: true } },
+      offerBoxEntitlement: {
+        select: {
+          id: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      friendOfferEntitlement: {
+        select: {
+          id: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
     },
     orderBy: [{ createdAt: "desc" }],
     take: 300,
@@ -96,6 +117,10 @@ export async function GET(req: Request) {
       makeupReason: booking.makeupReason ?? null,
       paidAmount: booking.paidAmount,
       paymentMethod: booking.paymentMethod,
+      offerBoxEntitlementId: booking.offerBoxEntitlementId,
+      offerBoxEntitlement: booking.offerBoxEntitlement,
+      friendOfferEntitlementId: booking.friendOfferEntitlementId,
+      friendOfferEntitlement: booking.friendOfferEntitlement,
       createdAt: booking.createdAt.toISOString(),
       user: {
         id: booking.user.id,
@@ -171,6 +196,10 @@ export async function POST(req: Request) {
 
     const booking =
       await db.$transaction(async (tx) => {
+        await lockMembershipLifecycleUserTx(
+          asDbTransactionClient(tx),
+          userId,
+        );
         /*
          * Serialize seat allocation.
          */
@@ -399,7 +428,83 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "الحجز غير موجود." }, { status: 404 });
     }
 
+    // V5 independent friend rights are not UserMemberships and cannot safely
+    // pass through legacy membership cancellation/reschedule mutation paths.
+    // The QR attendance handler has its own independent-right validation.
+    if (booking.friendOfferEntitlementId) {
+      return NextResponse.json(
+        {
+          error: "إدارة تعديل حجز عرض الصحاب المستقل غير متاحة حتى اكتمال مسار التعويض والاستبدال الآمن.",
+          code: "INDEPENDENT_FRIEND_ADMIN_MUTATION_PENDING",
+        },
+        { status: 409 },
+      );
+    }
+
     // Admin-only mutations - trainer checks removed
+
+    if (
+      booking.offerBoxEntitlementId &&
+      (payload.action === "confirm" || payload.action === "reschedule")
+    ) {
+      try {
+        const result = await applyIndependentOfferAdminBookingAction({
+          bookingId: booking.id,
+          action: payload.action,
+          targetScheduleId: payload.scheduleId,
+          reviewedByUserId: authorization.session.id,
+        });
+
+        void logAudit({
+          action: payload.action,
+          targetType: "booking",
+          targetId: booking.id,
+          details: {
+            userId: booking.userId,
+            offerBoxEntitlementId: booking.offerBoxEntitlementId,
+            source: "admin_independent_offer",
+          },
+        });
+
+        return NextResponse.json(result);
+      } catch (error) {
+        if (error instanceof BookingRescheduleDomainError) {
+          const messages: Record<string, string> = {
+            BOOKING_NOT_FOUND: "الحجز غير موجود.",
+            BOOKING_NOT_ELIGIBLE: "لا يمكن تنفيذ الإجراء على هذا الحجز أو رصيد العرض غير كافٍ.",
+            BOOKING_NOT_OPERATIONAL: "العرض المرتبط بالحجز غير ساري.",
+            TARGET_NOT_FOUND: "الموعد الجديد غير موجود.",
+            TARGET_NOT_ACTIVE: "الموعد الجديد غير متاح.",
+            TARGET_FULL: "لا توجد أماكن متاحة.",
+            TARGET_SLOT_PASSED: "الموعد الجديد انتهى بالفعل.",
+            CURRENT_SLOT_PASSED: "لا يمكن نقل حصة انتهى موعدها.",
+            TARGET_ALREADY_BOOKED: "لدى العميلة حجز آخر في نفس الموعد.",
+            TARGET_OUTSIDE_MEMBERSHIP_PERIOD: "الموعد خارج مدة العرض.",
+            CLASS_NOT_INCLUDED: "الكلاس غير مسموح به في هذا الإجراء.",
+            DAILY_SESSION_LIMIT_REACHED: "تم تجاوز الحد اليومي لحصص العرض.",
+            DISTINCT_CLASS_REQUIRED: "يجب اختيار كلاس مختلف.",
+            HEALTH_RESTRICTION_BLOCKED: "الحصة غير متاحة وفق الاستبيان الصحي.",
+            BOOKING_CHANGED: "تم تغيير الحجز أثناء التنفيذ. يرجى تحديث الصفحة.",
+          };
+
+          return NextResponse.json(
+            {
+              error: messages[error.code] ?? "تعذر تعديل حجز العرض المستقل.",
+              code: error.code,
+            },
+            {
+              status:
+                error.code === "BOOKING_NOT_FOUND" ||
+                error.code === "TARGET_NOT_FOUND"
+                  ? 404
+                  : 409,
+            },
+          );
+        }
+
+        throw error;
+      }
+    }
 
     if (payload.action === "cancel") {
       if (booking.status !== "confirmed" && booking.status !== "cancelled") {
@@ -412,7 +517,7 @@ export async function PATCH(req: Request) {
 
       const cancelled = await db.$transaction(async (tx) => {
         const claimed = await tx.booking.updateMany({
-          where: { id: booking.id, status: "confirmed" },
+          where: { id: booking.id, scheduleId: booking.scheduleId, status: "confirmed" },
           data: { status: "cancelled" },
         });
 
@@ -808,7 +913,7 @@ export async function DELETE(req: Request) {
           const claimed = await tx.booking.updateMany({
             where: {
               id,
-              status: "confirmed",
+              scheduleId: booking.scheduleId, status: "confirmed",
             },
             data: { status: "cancelled" },
           });
@@ -900,7 +1005,7 @@ export async function DELETE(req: Request) {
       const claimed = await tx.booking.updateMany({
         where: {
           id: bookingId,
-          status: "confirmed",
+          scheduleId: booking.scheduleId, status: "confirmed",
         },
         data: { status: "cancelled" },
       });

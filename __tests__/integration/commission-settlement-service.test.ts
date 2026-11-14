@@ -1,26 +1,61 @@
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { db, asDbTransactionClient } from "@/lib/db";
 import { settleCommissionsTx } from "@/lib/commissions/commission-settlement-service";
 
+
+function r15zAllowedHrDatabase(dbName: string | undefined | null): boolean {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return false;
+
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1"
+  ) return false;
+
+  const r13 =
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1";
+
+  if (r13) {
+    return (
+      u.port === "3306" &&
+      u.pathname === "/fitzone_final_release_r13_test" &&
+      decodeURIComponent(u.username) === "fitzone_r13_user" &&
+      dbName === "fitzone_final_release_r13_test"
+    );
+  }
+
+  return (
+    u.pathname === "/fitzone_test" &&
+    decodeURIComponent(u.username) === "fitzone_test_user" &&
+    dbName === "fitzone_test"
+  );
+}
+
 function assertTestDatabase() {
   const raw = process.env.DATABASE_URL;
-
   if (!raw) {
     throw new Error("REFUSING: DATABASE_URL missing");
   }
 
-  const url = new URL(raw);
+  let databaseName: string;
+  try {
+    databaseName = new URL(raw).pathname.slice(1);
+  } catch {
+    throw new Error("REFUSING_NON_ISOLATED_DATABASE");
+  }
 
-  if (
-    process.env.APP_ENV !== "test" ||
-    url.protocol !== "mysql:" ||
-    url.hostname !== "127.0.0.1" ||
-    decodeURIComponent(url.username) !== "fitzone_test_user" ||
-    url.pathname !== "/fitzone_test"
-  ) {
-    throw new Error(
-      "REFUSING: commission settlement integration requires fitzone_test",
-    );
+  if (!r15zAllowedHrDatabase(databaseName)) {
+    throw new Error("REFUSING_NON_ISOLATED_DATABASE");
   }
 }
 
@@ -521,16 +556,82 @@ describe(
         },
       });
 
+      // PARTNER_RECEIPT_DUPLICATE_ROLLBACK_INTEGRATION_V1
+      const receiptSha256 = createHash("sha256")
+        .update(stamp)
+        .digest("hex");
+      const receiptUrl = `https://r2.test/partners/${stamp}.png`;
+
       const result = await db.$transaction(async (tx) =>
         settleCommissionsTx(asDbTransactionClient(tx), {
           commissionType: "partner",
           beneficiaryId: partner.id,
           commissionIds: [commission.id],
           actorUserId: user.id,
+          receiptUrl,
+          receiptSha256,
         }),
       );
 
       createdPayoutIds.push(result.payout.id);
+
+      const secondMembership = await db.userMembership.create({
+        data: {
+          userId: customer.id,
+          membershipId: membership.id,
+          status: "active",
+          startDate,
+          endDate,
+          paymentAmount: 100,
+          paymentMethod: "cash",
+        },
+      });
+
+      const secondCommission = await db.partnerCommission.create({
+        data: {
+          partnerId: partner.id,
+          userMembershipId: secondMembership.id,
+          amount: 10,
+          status: "pending",
+        },
+      });
+
+      try {
+        await expect(
+          db.$transaction(async (tx) =>
+            settleCommissionsTx(asDbTransactionClient(tx), {
+              commissionType: "partner",
+              beneficiaryId: partner.id,
+              commissionIds: [secondCommission.id],
+              actorUserId: user.id,
+              sourceType: "partner_withdrawal_request",
+              sourceId: `receipt-duplicate-${stamp}`,
+              receiptUrl,
+              receiptSha256,
+            }),
+          ),
+        ).rejects.toThrow();
+
+        const secondAfter =
+          await db.partnerCommission.findUniqueOrThrow({
+            where: { id: secondCommission.id },
+          });
+
+        expect(secondAfter.status).toBe("pending");
+
+        expect(
+          await db.commissionPayout.count({
+            where: { beneficiaryId: partner.id },
+          }),
+        ).toBe(1);
+      } finally {
+        await db.partnerCommission.delete({
+          where: { id: secondCommission.id },
+        });
+        await db.userMembership.delete({
+          where: { id: secondMembership.id },
+        });
+      }
 
       const after = await db.partnerCommission.findUniqueOrThrow({
         where: { id: commission.id },

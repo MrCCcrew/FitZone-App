@@ -6,7 +6,8 @@ const source = readFileSync(resolve(process.cwd(), "src/app/FitzoneApp.tsx"), "u
 
 describe("FitzoneApp hydration structure", () => {
   it("keeps one static AI Coach accessibility announcer before page content", () => {
-    expect((source.match(/aria-live="polite"/g) ?? [])).toHaveLength(1);
+    expect((source.match(/className="sr-only" aria-live="polite" aria-atomic="true"/g) ?? [])).toHaveLength(1);
+    expect((source.match(/<CoachAccessibilityAnnouncer announcement=\{coachAnnouncement\} \/>/g) ?? [])).toHaveLength(1);
     expect(source).toContain('className="sr-only" aria-live="polite" aria-atomic="true"');
     const announcer = source.indexOf("<CoachAccessibilityAnnouncer announcement={coachAnnouncement} />");
     const membershipWrapper = source.indexOf("<MembershipsPage");

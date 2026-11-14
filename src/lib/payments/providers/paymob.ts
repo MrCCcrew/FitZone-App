@@ -1,4 +1,5 @@
-import { findSinglePaidPaymobOrderTransaction } from "@/lib/payments/paymob-order-paid-proof";
+import { assessPaymobUnpaidOrder, type PaymobUnpaidOrderProof } from "@/lib/payments/paymob-order-unpaid-proof";
+import { assessPaymobOrderPositiveProof, assessPaymobOrderAndAcceptanceProof } from "@/lib/payments/paymob-order-positive-proof";
 import { isFinalRetainedPaymobPayment } from "@/lib/payments/paymob-retained-payment-proof";
 import { resolvePaymobIntentionExpiration } from "@/lib/payments/paymob-membership-expiration";
 import crypto from "crypto";
@@ -355,7 +356,7 @@ async function createCheckout(input: PaymentCheckoutInput): Promise<PaymentCheck
 
   const expirationSeconds = resolvePaymobIntentionExpiration({
     membershipHoldExpiresAt:
-      input.purpose === "membership"
+      input.purpose === "membership" || input.purpose === "offer_box"
         ? input.membershipHoldExpiresAt
         : null,
     now: checkoutStartedAt,
@@ -566,6 +567,150 @@ export async function renewExistingMembershipPaymobIntention(input: {
     },
   };
 }
+// PAYMOB_RECOVERY_LIVE_ORDER_AUTHORITY_V1
+// Acceptance verification alone must never activate a recovered payment.
+export async function confirmPaymobOrderPaidForRecovery(input: {
+  paymentId: string;
+  paymobOrderId: number | string | null;
+  paymobTransactionId: string;
+  amount: number;
+  currency: string;
+}): Promise<boolean> {
+  const orderId = String(input.paymobOrderId ?? "").trim();
+  const expectedAmountCents = Math.round(input.amount * 100);
+
+  if (
+    !/^[1-9][0-9]*$/.test(orderId) ||
+    !Number.isSafeInteger(Number(orderId)) ||
+    !/^[0-9]+$/.test(input.paymobTransactionId) ||
+    !Number.isSafeInteger(expectedAmountCents) ||
+    expectedAmountCents <= 0 ||
+    !input.currency.trim()
+  ) {
+    return false;
+  }
+
+  try {
+    assertExternalSideEffectsAllowed("Paymob recovery order inquiry");
+    const token = await authenticate();
+
+    const response = await fetch(
+      `${getRegionBase()}/api/ecommerce/orders/${encodeURIComponent(orderId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) return false;
+
+    const order: unknown = await response.json();
+
+    const orderTransactions =
+      order && typeof order === "object" && !Array.isArray(order)
+        ? (order as Record<string, unknown>).transactions
+        : undefined;
+
+    // Preserve the original multi-transaction proof when available.
+    if (Array.isArray(orderTransactions)) {
+      const confirmedId = assessPaymobOrderPositiveProof({
+        order,
+        expectedOrderId: orderId,
+        expectedMerchantOrderId: input.paymentId,
+        expectedAmountCents,
+        expectedCurrency: input.currency,
+      });
+
+      return confirmedId === input.paymobTransactionId;
+    }
+
+    // A malformed list is inconclusive, not permission to bypass it.
+    if (orderTransactions !== undefined) return false;
+
+    // Live Paymob Orders may not include transactions.
+    // Independently obtain the exact Acceptance Transaction.
+    const acceptanceResponse = await fetch(
+      `${getRegionBase()}/api/acceptance/transactions/${encodeURIComponent(input.paymobTransactionId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        cache: "no-store",
+      },
+    );
+
+    if (!acceptanceResponse.ok) return false;
+
+    const acceptance: unknown = await acceptanceResponse.json();
+
+    return assessPaymobOrderAndAcceptanceProof({
+      order,
+      acceptance,
+      expectedOrderId: orderId,
+      expectedMerchantOrderId: input.paymentId,
+      expectedTransactionId: input.paymobTransactionId,
+      expectedAmountCents,
+      expectedCurrency: input.currency,
+    });
+  } catch (error) {
+    console.warn(
+      "[PAYMOB_RECOVERY_ORDER_INCONCLUSIVE]",
+      error instanceof Error ? error.name : "unknown",
+    );
+    return false;
+  }
+}
+
+export async function inquirePaymobUnpaidOrder(input: {
+  paymentId: string;
+  providerPayload: string | null;
+  amount: number;
+  currency: string;
+}): Promise<PaymobUnpaidOrderProof | null> {
+  const stored = readStoredPayload(input.providerPayload);
+  const orderId = String(stored?.intentionOrderId ?? "").trim();
+  const cents = Math.round(input.amount * 100);
+
+  if (!/^[0-9]+$/.test(orderId) ||
+      !Number.isSafeInteger(cents) || cents <= 0) return null;
+
+  try {
+    assertExternalSideEffectsAllowed("Paymob unpaid order inquiry");
+    const token = await authenticate();
+
+    const response = await fetch(
+      `${getRegionBase()}/api/ecommerce/orders/${encodeURIComponent(orderId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) return null;
+
+    const order: unknown = await response.json();
+
+    return assessPaymobUnpaidOrder({
+      order,
+      paymentId: input.paymentId,
+      expectedOrderId: orderId,
+      expectedAmountCents: cents,
+      expectedCurrency: input.currency,
+      checkedAt: new Date(),
+    });
+  } catch (error) {
+    console.warn(
+      "[PAYMOB_UNPAID_ORDER_INQUIRY_INCONCLUSIVE]",
+      error instanceof Error ? error.name : "unknown",
+    );
+    return null;
+  }
+}
+
 async function verifyTransaction(transaction: {
   id: string;
   providerReference?: string | null;
@@ -610,13 +755,53 @@ async function verifyTransaction(transaction: {
       if (response.ok) {
         const order: unknown = await response.json();
 
-        const confirmedTransactionId =
-          findSinglePaidPaymobOrderTransaction({
-            order,
-            expectedOrderId: storedOrderId,
-            expectedAmountCents: Math.round(transaction.amount * 100),
-            expectedCurrency: transaction.currency,
-          });
+        // First use the order's complete transaction list when provided.
+        // An absent list is not a failed payment: independently inquire by
+        // our merchant reference, then require fresh Order + Acceptance proof.
+        let confirmedTransactionId = assessPaymobOrderPositiveProof({
+          order,
+          expectedOrderId: storedOrderId,
+          expectedMerchantOrderId: transaction.id,
+          expectedAmountCents: Math.round(transaction.amount * 100),
+          expectedCurrency: transaction.currency,
+        });
+        let reconciliationSource = "paymob_order_transactions";
+
+        if (
+          !confirmedTransactionId &&
+          order &&
+          typeof order === "object" &&
+          !Array.isArray(order) &&
+          (order as Record<string, unknown>).transactions === undefined
+        ) {
+          const inquiry = await inquirePaymobTransactionByMerchantReference(
+            transaction.id,
+          );
+          const candidateId = inquiry.paymobTransactionId;
+          const expectedAmountCents = Math.round(transaction.amount * 100);
+
+          if (
+            inquiry.found &&
+            inquiry.status === "paid" &&
+            inquiry.success === true &&
+            inquiry.pending === false &&
+            inquiry.merchantOrderId === transaction.id &&
+            inquiry.amountCents === expectedAmountCents &&
+            inquiry.currency === transaction.currency.trim().toUpperCase() &&
+            candidateId &&
+            /^[1-9][0-9]*$/.test(candidateId) &&
+            await confirmPaymobOrderPaidForRecovery({
+              paymentId: transaction.id,
+              paymobOrderId: storedOrderId,
+              paymobTransactionId: candidateId,
+              amount: transaction.amount,
+              currency: transaction.currency,
+            })
+          ) {
+            confirmedTransactionId = candidateId;
+            reconciliationSource = "paymob_merchant_reference_order_acceptance";
+          }
+        }
 
         if (confirmedTransactionId) {
           return {
@@ -628,7 +813,7 @@ async function verifyTransaction(transaction: {
               ...(savedPayload ?? {}),
               paymobOrderId: storedOrderId,
               paymobTransactionId: confirmedTransactionId,
-              reconciliationSource: "paymob_order_transactions",
+              reconciliationSource,
             },
           };
         }
@@ -695,6 +880,91 @@ async function verifyTransaction(transaction: {
         };
       }
 
+      // PAYMOB_ORDER_FINAL_AUTHORITY_V1
+      // Acceptance proves transaction identity, not final Order payment.
+      // Never promote a Paymob payment to paid without a live Order
+      // containing the same uniquely confirmed successful transaction.
+      if (status === "paid") {
+        const orderIdForProof = /^[0-9]+$/.test(expectedOrderId)
+          ? expectedOrderId
+          : String(acceptance.order?.id ?? "").trim();
+
+        let confirmedOrderTransactionId: string | null = null;
+
+        if (/^[0-9]+$/.test(orderIdForProof)) {
+          try {
+            const orderResponse = await fetch(
+              `${getRegionBase()}/api/ecommerce/orders/${encodeURIComponent(orderIdForProof)}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${authToken}`,
+                },
+                signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+                cache: "no-store",
+              },
+            );
+
+            if (orderResponse.ok) {
+              const liveOrder: unknown = await orderResponse.json();
+
+              confirmedOrderTransactionId =
+                assessPaymobOrderPositiveProof({
+                  order: liveOrder,
+                  expectedOrderId: orderIdForProof,
+                  expectedMerchantOrderId: transaction.id,
+                  expectedAmountCents,
+                  expectedCurrency: transaction.currency,
+                });
+
+              // The live Order may omit transactions. Do not downgrade to
+              // Acceptance-only proof: verify both independent responses.
+              if (
+                !confirmedOrderTransactionId &&
+                liveOrder &&
+                typeof liveOrder === "object" &&
+                !Array.isArray(liveOrder) &&
+                (liveOrder as Record<string, unknown>).transactions === undefined &&
+                assessPaymobOrderAndAcceptanceProof({
+                  order: liveOrder,
+                  acceptance,
+                  expectedOrderId: orderIdForProof,
+                  expectedMerchantOrderId: transaction.id,
+                  expectedTransactionId: String(acceptance.id ?? ""),
+                  expectedAmountCents,
+                  expectedCurrency: transaction.currency,
+                })
+              ) {
+                confirmedOrderTransactionId = String(acceptance.id);
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "[PAYMOB_ORDER_FINAL_AUTHORITY_INCONCLUSIVE]",
+              error instanceof Error ? error.name : "unknown",
+            );
+          }
+        }
+
+        if (
+          confirmedOrderTransactionId !== String(acceptance.id)
+        ) {
+          console.warn(
+            "[PAYMOB_ORDER_PAID_PROOF_REQUIRED]",
+            { transactionId: transaction.id },
+          );
+
+          return {
+            status: "pending",
+            message:
+              "Paymob Order payment confirmation is required before activation.",
+            providerReference: transaction.providerReference ?? null,
+            externalReference: transaction.externalReference ?? null,
+            payload: savedIdentity,
+          };
+        }
+      }
+
       console.info("[PAYMOB] Verification result", {
         transactionId: transaction.id,
         externalReference: transaction.externalReference,
@@ -722,60 +992,15 @@ async function verifyTransaction(transaction: {
       };
     }
 
-    // v1 API call failed — fall back only to a stored, HMAC-verified webhook.
-    //
-    // Checkout-creation payloads are NOT authoritative payment results.
-    // A webhookType marker exists only after handleWebhook() has accepted
-    // a Paymob callback and verified its HMAC.
-    const storedPayload = readStoredPayload(transaction.providerPayload);
-    const storedWebhookType =
-      typeof storedPayload?.webhookType === "string"
-        ? storedPayload.webhookType
-        : null;
+    // A stored HMAC-verified webhook proves the origin of an event,
+    // not the current financial finality of this Paymob order.
+    // Without live provider proof, do not infer paid or failed.
+    // Preserve the saved evidence for later financial reconciliation.
+    console.warn(
+      "[PAYMOB_ACCEPTANCE_UNAVAILABLE_PENDING_RECONCILIATION]",
+      { transactionId: transaction.id },
+    );
 
-    const hasTrustedStoredWebhook =
-      storedWebhookType === "TRANSACTION" ||
-      storedWebhookType === "UNIFIED_CHECKOUT";
-
-    if (hasTrustedStoredWebhook) {
-      const storedStatus = mapAcceptanceStatus({
-        success:
-          storedPayload?.success === true,
-        pending:
-          storedPayload?.pending === true,
-        error_occured:
-          storedPayload?.error_occured === true,
-      });
-
-      if (
-        storedStatus === "paid" ||
-        storedStatus === "failed"
-      ) {
-        console.info(
-          "[PAYMOB] v1 API unavailable — trusting stored verified webhook payload",
-          {
-            transactionId: transaction.id,
-            externalReference:
-              transaction.externalReference,
-            storedWebhookType,
-            status: storedStatus,
-          },
-        );
-
-        return {
-          status: storedStatus,
-          message:
-            storedStatus === "paid"
-              ? "Payment confirmed via stored verified webhook payload (v1 API unavailable)."
-              : "Payment failure confirmed via stored verified webhook payload (v1 API unavailable).",
-          providerReference:
-            transaction.providerReference ?? null,
-          externalReference:
-            transaction.externalReference ?? null,
-          payload: storedPayload,
-        };
-      }
-    }
   }
 
   return {
@@ -960,6 +1185,11 @@ export type PaymobMerchantReferenceInquiryResult = {
   currency: string | null;
   pending: boolean | null;
   success: boolean | null;
+  retainedPaymentFailure?:
+    | "refunded"
+    | "voided"
+    | "partially_refunded"
+    | "duplicate_charge";
 };
 
 /**
@@ -1060,6 +1290,16 @@ export async function inquirePaymobTransactionByMerchantReference(
   const safeStatus = mappedStatus === "paid" && !finalPaid
     ? "pending" as const : mappedStatus;
 
+  const retainedPaymentFailure =
+    transaction.is_refunded === true
+      ? "refunded" as const
+      : transaction.is_voided === true
+        ? "voided" as const
+        : typeof transaction.refunded_amount_cents === "number" &&
+            transaction.refunded_amount_cents > 0
+          ? "partially_refunded" as const
+          : undefined;
+
   return {
     found: true,
 
@@ -1068,6 +1308,7 @@ export async function inquirePaymobTransactionByMerchantReference(
      * paid | failed | pending
      */
     status: safeStatus,
+    retainedPaymentFailure,
 
     paymobTransactionId:
       transaction.id != null
@@ -1098,6 +1339,152 @@ export async function inquirePaymobTransactionByMerchantReference(
         : null,
   };
 }
+
+/**
+ * Read-only discovery of a successful attempt from a Paymob Order.
+ * Never treats an Order or Intention alone as proof of payment.
+ * The final recovery service must independently verify Acceptance
+ * and Order evidence before any financial mutation.
+ */
+export async function inquirePaidPaymobOrderAttemptsForRecovery(
+  localPaymentId: string,
+  _storedOrderId: string | null,
+): Promise<PaymobMerchantReferenceInquiryResult> {
+  const unresolved: PaymobMerchantReferenceInquiryResult = {
+    found: false,
+    status: "pending",
+    paymobTransactionId: null,
+    merchantOrderId: null,
+    amountCents: null,
+    currency: null,
+    pending: null,
+    success: null,
+  };
+
+  if (!localPaymentId.trim()) return unresolved;
+
+  assertExternalSideEffectsAllowed(
+    "Paymob recovery multi-attempt order inquiry",
+  );
+
+  const token = await authenticate();
+
+  // Resolve the real Order from Paymob, not from a locally
+  // inferred or missing intentionOrderId.
+  const lookup = await fetch(
+    `${getRegionBase()}/api/ecommerce/orders/transaction_inquiry`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auth_token: token,
+        merchant_order_id: localPaymentId,
+      }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      cache: "no-store",
+    },
+  );
+
+  if (lookup.status === 404) return unresolved;
+  if (!lookup.ok) {
+    throw new Error(
+      `PAYMOB_ORDER_DISCOVERY_LOOKUP_HTTP_${lookup.status}`,
+    );
+  }
+
+  const transaction: unknown = await lookup.json();
+  if (
+    !transaction ||
+    typeof transaction !== "object" ||
+    Array.isArray(transaction)
+  ) return unresolved;
+
+  const tx = transaction as Record<string, unknown>;
+  const txOrder = tx.order;
+
+  if (
+    !txOrder ||
+    typeof txOrder !== "object" ||
+    Array.isArray(txOrder)
+  ) return unresolved;
+
+  const linked = txOrder as Record<string, unknown>;
+  const merchantReference =
+    linked.merchant_order_id ?? tx.special_reference;
+
+  if (String(merchantReference ?? "") !== localPaymentId) {
+    return unresolved;
+  }
+
+  const orderId = String(linked.id ?? "").trim();
+  if (
+    !/^[1-9][0-9]*$/.test(orderId) ||
+    !Number.isSafeInteger(Number(orderId))
+  ) return unresolved;
+
+  const response = await fetch(
+    `${getRegionBase()}/api/ecommerce/orders/${encodeURIComponent(orderId)}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      cache: "no-store",
+    },
+  );
+
+  if (response.status === 404) return unresolved;
+  if (!response.ok) {
+    throw new Error(
+      `PAYMOB_ORDER_DISCOVERY_DETAIL_HTTP_${response.status}`,
+    );
+  }
+
+  const order: unknown = await response.json();
+  if (
+    !order ||
+    typeof order !== "object" ||
+    Array.isArray(order)
+  ) return unresolved;
+
+  const obj = order as Record<string, unknown>;
+
+  // Never bypass absent or malformed lists. A full Order and
+  // Acceptance fallback is handled separately by verified recovery.
+  if (!Array.isArray(obj.transactions)) return unresolved;
+
+  const amountCents = obj.amount_cents;
+  const currency = obj.currency;
+
+  if (
+    typeof amountCents !== "number" ||
+    !Number.isSafeInteger(amountCents) ||
+    amountCents <= 0 ||
+    typeof currency !== "string" ||
+    !/^[A-Z]{3}$/.test(currency.toUpperCase())
+  ) return unresolved;
+
+  const paidId = assessPaymobOrderPositiveProof({
+    order,
+    expectedOrderId: orderId,
+    expectedMerchantOrderId: localPaymentId,
+    expectedAmountCents: amountCents,
+    expectedCurrency: currency,
+  });
+
+  if (!paidId) return unresolved;
+
+  return {
+    found: true,
+    status: "paid",
+    paymobTransactionId: paidId,
+    merchantOrderId: localPaymentId,
+    amountCents,
+    currency: currency.toUpperCase(),
+    pending: false,
+    success: true,
+  };
+}
+
 export async function verifyPaymobTransactionForRecovery(
   paymobTransactionId: string,
   expectedLocalTransactionId: string,
@@ -1149,6 +1536,7 @@ export async function verifyPaymobTransactionForRecovery(
   // Validation checks
   const checks = {
     exists: response.ok,
+    transactionIdMatch: String(tx.id ?? "") === paymobTransactionId,
     success: success === true,
     notPending: pending === false,
     amountMatch: amountInCurrency === expectedAmount,
@@ -1164,6 +1552,7 @@ export async function verifyPaymobTransactionForRecovery(
   const verified = Object.values(checks).every((check) => check === true);
 
   const failureReasons: string[] = [];
+  if (!checks.transactionIdMatch) failureReasons.push("transaction_id_mismatch");
   if (!checks.success) failureReasons.push("success=false");
   if (!checks.notPending) failureReasons.push("pending=true");
   if (!checks.amountMatch) failureReasons.push(`amount=${amountInCurrency} (expected ${expectedAmount})`);

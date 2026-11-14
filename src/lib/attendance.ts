@@ -165,6 +165,105 @@ export async function ensureMembershipAttendancePass(
   });
 }
 
+/**
+ * Independent Offer Box pass. Historical membership and
+ * private-session passes retain their existing identities.
+ */
+export async function ensureOfferBoxAttendancePass(
+  entitlementId: string,
+  userId: string,
+) {
+  const entitlement = await db.offerBoxEntitlement.findUnique({
+    where: { id: entitlementId },
+    include: {
+      purchase: {
+        select: {
+          userId: true,
+          status: true,
+          paidAt: true,
+          redeemedUserMembershipId: true,
+        },
+      },
+    },
+  });
+
+  if (
+    !entitlement ||
+    entitlement.userId !== userId ||
+    entitlement.status !== "active" ||
+    entitlement.purchase.userId !== userId ||
+    entitlement.purchase.status !== "redeemed" ||
+    !entitlement.purchase.paidAt ||
+    entitlement.purchase.redeemedUserMembershipId !== null
+  ) {
+    return null;
+  }
+
+  const pass = await db.attendancePass.upsert({
+    where: { offerBoxEntitlementId: entitlement.id },
+    create: {
+      userId,
+      offerBoxEntitlementId: entitlement.id,
+      kind: "offer_box",
+      status: "active",
+      code: createAttendanceCode(),
+      label: "Offer Box",
+    },
+    update: {},
+  });
+
+  if (
+    pass.userId !== userId ||
+    pass.userMembershipId !== null ||
+    pass.privateSessionApplicationId !== null ||
+    pass.kind !== "offer_box"
+  ) {
+    return null;
+  }
+
+  return pass;
+}
+
+/**
+ * Friend Offer QR identity: never attach to UserMembership, and never make a
+ * pending_settlement right valid for attendance.
+ */
+export async function ensureIndependentFriendAttendancePass(
+  entitlementId: string,
+  userId: string,
+) {
+  const right = await db.friendOfferEntitlement.findUnique({
+    where: { id: entitlementId },
+    include: { participant: { select: {
+      userId: true, status: true, userMembershipId: true, paymentTransactionId: true,
+    } } },
+  });
+  if (!right || right.status !== "active" || right.userId !== userId ||
+      right.participant.userId !== userId ||
+      right.participant.userMembershipId !== null ||
+      right.participant.paymentTransactionId !== right.paymentTransactionId ||
+      !["paid", "activated"].includes(right.participant.status)) return null;
+  const payment = await db.paymentTransaction.findUnique({
+    where: { id: right.paymentTransactionId },
+    select: { userId: true, status: true, provider: true, membershipId: true },
+  });
+  if (!payment || payment.userId !== userId || payment.status !== "paid" ||
+      payment.provider !== "paymob" || payment.membershipId !== null) return null;
+  const pass = await db.attendancePass.upsert({
+    where: { friendOfferEntitlementId: right.id },
+    create: {
+      userId, friendOfferEntitlementId: right.id,
+      code: createAttendanceCode(), kind: "friend_offer", status: "active",
+      label: "عرض الصحاب",
+    },
+    update: {},
+  });
+  if (pass.userId !== userId || pass.friendOfferEntitlementId !== right.id ||
+      pass.userMembershipId !== null || pass.privateSessionApplicationId !== null ||
+      pass.offerBoxEntitlementId !== null || pass.kind !== "friend_offer") return null;
+  return pass;
+}
+
 export async function ensurePrivateAttendancePass(privateSessionApplicationId: string) {
   const existing = await db.attendancePass.findUnique({
     where: { privateSessionApplicationId },

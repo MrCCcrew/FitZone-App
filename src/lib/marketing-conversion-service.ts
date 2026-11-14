@@ -826,3 +826,65 @@ export async function releaseMarketingFriendOfferLockTx(
     conversionId: conversion.id,
   };
 }
+
+/** Friend Offer conversion completed against its independent participant and
+ *  standalone commission, never a synthetic UserMembership. */
+export async function accrueIndependentFriendMarketingConversionTx(
+  tx: MarketingTx,
+  participantId: string,
+  userId: string,
+  paymentMinor: number,
+) {
+  const rows = await tx.$queryRaw<Array<{id: string}>>`
+    SELECT id FROM MarketingConversion
+    WHERE friendOfferParticipantId = ${participantId}
+    LIMIT 1 FOR UPDATE
+  `;
+  if (!rows.length) return {skipped: true as const};
+  const c = await tx.marketingConversion.findUnique({where: {id: rows[0].id}});
+  if (!c || c.customerId !== userId || c.friendOfferParticipantId !== participantId ||
+      c.userMembershipId !== null ||
+      !Number.isSafeInteger(paymentMinor) || paymentMinor <= 0)
+    throw new Error("FRIEND_MARKETING_CUSTOMER_IDENTITY_INVALID");
+  if (c.status !== "checkout_locked" && c.status !== "converted")
+    throw new Error("FRIEND_MARKETING_CONVERSION_NOT_LOCKED");
+  if (c.commissionTypeSnapshot === null || c.commissionRateSnapshot === null ||
+      c.commissionBaseSnapshot === null ||
+      Math.round(c.commissionBaseSnapshot * 100) !== paymentMinor)
+    throw new Error("FRIEND_MARKETING_ECONOMICS_SNAPSHOT_MISMATCH");
+  const amount = calculateMarketingCommission({
+    commissionType: c.commissionTypeSnapshot,
+    commissionRate: c.commissionRateSnapshot,
+    commissionBase: c.commissionBaseSnapshot,
+  });
+  if (amount > 0) {
+    const existing = await tx.friendOfferCommission.findUnique({
+      where: {participantId_beneficiaryType_beneficiaryId: {
+        participantId, beneficiaryType: "marketing", beneficiaryId: c.assignedStaffUserId,
+      }},
+    });
+    if (existing) {
+      if (Math.round(Number(existing.amount)*100) !== Math.round(amount*100) ||
+          existing.snapshot !== JSON.stringify({conversionId: c.id, type: c.commissionTypeSnapshot,
+            rate: c.commissionRateSnapshot, base: c.commissionBaseSnapshot}))
+        throw new Error("FRIEND_MARKETING_COMMISSION_REPLAY_MISMATCH");
+    } else {
+      await tx.friendOfferCommission.create({data: {
+        participantId, beneficiaryType: "marketing", beneficiaryId: c.assignedStaffUserId,
+        amount, status: "earned", snapshot: JSON.stringify({conversionId: c.id,
+          type: c.commissionTypeSnapshot, rate: c.commissionRateSnapshot, base: c.commissionBaseSnapshot}),
+      }});
+    }
+  }
+  if (c.status === "checkout_locked") {
+    const result = await tx.marketingConversion.updateMany({
+      where: {id: c.id, friendOfferParticipantId: participantId,
+        userMembershipId: null, status: "checkout_locked"},
+      data: {status: "converted", activeKey: null, convertedAt: new Date()},
+    });
+    if (result.count !== 1) throw new Error("FRIEND_MARKETING_CONVERSION_RACE");
+  } else if (c.activeKey !== null) {
+    throw new Error("FRIEND_MARKETING_CONVERTED_ACTIVE_KEY_CONFLICT");
+  }
+  return {skipped: false as const, amount};
+}

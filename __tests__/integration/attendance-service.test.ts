@@ -1,3 +1,21 @@
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import {
   afterAll,
   beforeAll,
@@ -35,8 +53,8 @@ function assertTestDatabase() {
     url.protocol !== "mysql:" ||
     url.hostname !== "127.0.0.1" ||
     url.port !== "3306" ||
-    database !== "fitzone_test" ||
-    username !== "fitzone_test_user"
+    database !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_final_release_r13_test" : "fitzone_test") ||
+    username !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_r13_user" : "fitzone_test_user")
   ) {
     throw new Error(
       "Attendance integration tests require fitzone_test as fitzone_test_user on 127.0.0.1:3306.",

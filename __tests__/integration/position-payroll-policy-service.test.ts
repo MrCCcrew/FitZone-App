@@ -1,3 +1,21 @@
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { db, asDbTransactionClient } from "@/lib/db";
@@ -16,8 +34,8 @@ if (
   process.env.APP_ENV !== "test" ||
   process.env.NODE_ENV !== "test" ||
   url.hostname !== "127.0.0.1" ||
-  decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  decodeURIComponent(url.username) !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_r13_user" : "fitzone_test_user") ||
+  url.pathname !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "/fitzone_final_release_r13_test" : "/fitzone_test")
 ) {
   throw new Error(
     "REFUSING: position payroll policy tests require fitzone_test",
@@ -42,6 +60,14 @@ async function position(code: string, name: string) {
 }
 
 beforeAll(async () => {
+  const existingHead = await db.position.findUnique({
+    where: { code: "HEAD_COACH_OWNER" },
+    select: { id: true },
+  });
+  if (existingHead) {
+    throw new Error("R15ZAH_PREEXISTING_HEAD_POSITION");
+  }
+
   const normal = await position("NORMAL_TEST", "Normal Test");
   normalId = normal.id;
 
@@ -55,13 +81,6 @@ beforeAll(async () => {
       nameEn: "Head Coach Owner",
       isActive: true,
     },
-  }).catch(async () => {
-    const existing = await db.position.findUnique({
-      where: { code: "HEAD_COACH_OWNER" },
-    });
-
-    if (!existing) throw new Error("HEAD_POSITION_REQUIRED");
-    return existing;
   });
 
   headId = head.id;
@@ -82,7 +101,7 @@ afterAll(async () => {
   await db.position.deleteMany({
     where: {
       id: {
-        in: [normalId, leaderId].filter(Boolean),
+        in: [normalId, leaderId, headId].filter(Boolean),
       },
     },
   });

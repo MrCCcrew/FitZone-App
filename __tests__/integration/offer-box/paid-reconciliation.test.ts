@@ -1,11 +1,35 @@
+{
+  const r15zaqRaw = process.env.DATABASE_URL;
+  if (!r15zaqRaw ||
+      process.env.DIRECT_URL !== r15zaqRaw ||
+      process.env.TEST_DATABASE_URL !== r15zaqRaw ||
+      process.env.APP_ENV !== "test" ||
+      process.env.NODE_ENV !== "test" ||
+      process.env.FITZONE_R13_ISOLATED_INTEGRATION !== "1") {
+    throw new Error("R15ZAQ_R13_ENVIRONMENT_REJECTED");
+  }
+  const r15zaqTarget = new URL(r15zaqRaw);
+  if (
+    r15zaqTarget.protocol !== "mysql:" ||
+    r15zaqTarget.hostname !== "127.0.0.1" ||
+    r15zaqTarget.port !== "3306" ||
+    decodeURIComponent(r15zaqTarget.username) !== "fitzone_r13_user" ||
+    r15zaqTarget.pathname !== "/fitzone_final_release_r13_test"
+  ) {
+    throw new Error("R15ZAQ_R13_DATABASE_IDENTITY_REJECTED");
+  }
+}
 import {
   afterAll,
   beforeAll,
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import { PrismaClient } from "@prisma/client";
+import { updatePaymentTransactionStatus } from "@/lib/payments/service";
+import { getPaymentProvider } from "@/lib/payments/registry";
 
 import {
   reconcilePaidOfferBoxPurchase,
@@ -27,8 +51,8 @@ if (
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   decodeURIComponent(url.username) !==
-    "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+    "fitzone_r13_user" ||
+  url.pathname !== "/fitzone_final_release_r13_test"
 ) {
   throw new Error(
     "REFUSING: Offer Box paid reconciliation integration requires fitzone_test",
@@ -160,6 +184,16 @@ beforeAll(async () => {
           JSON.stringify({
             version: 1,
             testMarker: stamp,
+            commercial: {
+              currency: "EGP",
+              finalPrice: 100,
+            },
+            economics: {
+              commissionSnapshot: JSON.stringify({
+                version: 1,
+                capturedAt: new Date().toISOString(),
+              }),
+            },
           }),
         snapshotVersion: 1,
         priceSnapshot: 100,
@@ -175,9 +209,22 @@ beforeAll(async () => {
     });
 
   purchaseId = purchase.id;
+
+  // Central payment replay resolves the purchase through frozen metadata.
+  await db.paymentTransaction.update({
+    where: { id: paymentId },
+    data: {
+      metadata: JSON.stringify({
+        testMarker: stamp,
+        offerBoxPurchaseId: purchaseId,
+        offerBoxSnapshotVersion: 1,
+      }),
+    },
+  });
 });
 
 afterAll(async () => {
+  vi.restoreAllMocks();
   await cleanup();
   await db.$disconnect();
 });
@@ -191,17 +238,45 @@ describe(
         const paidAt =
           new Date();
 
-        const first =
-          await reconcilePaidOfferBoxPurchase({
+        const provider = getPaymentProvider("paymob");
+        if (!provider) {
+          throw new Error("TEST_PAYMOB_PROVIDER_MISSING");
+        }
+
+        const verifiedOrder = vi.spyOn(
+          provider,
+          "verifyTransaction",
+        ).mockResolvedValue({
+          status: "paid",
+          message: "Isolated verified Order fixture",
+        });
+
+        // Local paid state is NOT sufficient for direct reconciliation.
+        await expect(
+          reconcilePaidOfferBoxPurchase({
             transactionId: paymentId,
             purchaseId,
             paidAt,
-          });
+            paymobOrderPaidVerified: false,
+          }),
+        ).rejects.toThrow(
+          "OFFER_BOX_PAYMOB_PAID_PROOF_REQUIRED",
+        );
 
-        expect(first).toEqual({
-          alreadyReconciled: false,
-          status: "available",
+        const beforeVerified = await db.offerBoxPurchase.findUniqueOrThrow({
+          where: { id: purchaseId },
         });
+        expect(beforeVerified.status).toBe("pending_payment");
+        expect(beforeVerified.paymentTransactionId).toBeNull();
+
+        // Enter through the existing central Order authority instead.
+        const first = await updatePaymentTransactionStatus(
+          paymentId,
+          "paid",
+        );
+
+        expect(first.status).toBe("paid");
+        expect(verifiedOrder).toHaveBeenCalledTimes(1);
 
         const afterFirst =
           await db.offerBoxPurchase
@@ -227,20 +302,13 @@ describe(
           afterFirst.holdExpiresAt,
         ).toBeNull();
 
-        const second =
-          await reconcilePaidOfferBoxPurchase({
-            transactionId: paymentId,
-            purchaseId,
-            paidAt:
-              new Date(
-                paidAt.getTime() + 1000,
-              ),
-          });
+        const second = await updatePaymentTransactionStatus(
+          paymentId,
+          "paid",
+        );
 
-        expect(second).toEqual({
-          alreadyReconciled: true,
-          status: "available",
-        });
+        expect(second.status).toBe("paid");
+        expect(verifiedOrder).toHaveBeenCalledTimes(2);
 
         const afterSecond =
           await db.offerBoxPurchase

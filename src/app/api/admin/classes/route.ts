@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { canManageClassTypes } from "@/lib/admin-permissions";
 import { db } from "@/lib/db";
+import { updateClassWithCapacityAdjustment, ClassCapacityError } from "@/lib/class-capacity-adjustment";
 import { clearPublicApiCache } from "@/lib/public-cache";
 import { resolveOrCreateClassType } from "@/lib/class-type-catalog";
 import {
@@ -398,6 +399,18 @@ export async function PATCH(request: Request) {
       );
     }
 
+    if (
+      body.maxSpots !== undefined &&
+      (!Number.isSafeInteger(Number(body.maxSpots)) ||
+        Number(body.maxSpots) < 1 ||
+        Number(body.maxSpots) > 1000)
+    ) {
+      return NextResponse.json(
+        { error: "سعة الكلاس يجب أن تكون عددًا صحيحًا من 1 إلى 1000." },
+        { status: 400 },
+      );
+    }
+
     const data: Record<string, unknown> = {};
     if (body.active !== undefined) data.isActive = Boolean(body.active);
     if (body.name !== undefined) data.name = body.name.trim();
@@ -440,7 +453,15 @@ export async function PATCH(request: Request) {
     if (body.showTrainerName !== undefined) data.showTrainerName = Boolean(body.showTrainerName);
 
     if (Object.keys(data).length > 0) {
-      await db.class.update({ where: { id: body.id }, data });
+      if (body.maxSpots !== undefined) {
+        await updateClassWithCapacityAdjustment({
+          classId: body.id,
+          maxSpots: Number(body.maxSpots),
+          data,
+        });
+      } else {
+        await db.class.update({ where: { id: body.id }, data });
+      }
     }
 
     // Persist trial settings when provided
@@ -545,7 +566,13 @@ export async function PATCH(request: Request) {
 
     clearPublicApiCache();
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof ClassCapacityError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     return NextResponse.json({ error: "تعذر تحديث الكلاس الآن." }, { status: 500 });
   }
 }

@@ -1,6 +1,10 @@
+import { resolveBookingPolicy } from "@/lib/booking/booking-policy";
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
+import {
+  evaluateFriendOfferStudentEligibility,
+} from "@/lib/friend-offer-student-eligibility";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { getEligibilityPolicySnapshotForSource } from "@/lib/get-eligible-classes";
@@ -48,6 +52,7 @@ function publicGroupShape(
     priceSnapshotMinor: number;
     offerTermsSnapshot: string | null;
     matchingEnabled: boolean;
+    individualInvitesEnabled: boolean;
     config: {
       requiredMembers: number;
       offer: {
@@ -59,6 +64,7 @@ function publicGroupShape(
         durationDays: number | null;
         expiresAt: Date;
         isActive: boolean;
+        requiresEgyptianNationalId: boolean;
       };
     };
     participants: Array<{
@@ -70,6 +76,7 @@ function publicGroupShape(
     }>;
   },
   currentUserId?: string | null,
+  requestToken?: string,
 ) {
   const joinedCount = group.participants.filter(
     (participant) => participant.status !== "cancelled",
@@ -127,7 +134,8 @@ function publicGroupShape(
 
   return {
     id: group.id,
-    token: group.inviteToken,
+    token: currentParticipant ? group.inviteToken : (requestToken ?? group.inviteToken),
+    individualInvitesEnabled: group.individualInvitesEnabled,
     status: group.status,
     expiresAt: group.expiresAt,
     requiredMembers: group.config.requiredMembers,
@@ -151,13 +159,37 @@ function publicGroupShape(
       sessionsCount: frozenSessionsCount,
       durationDays: frozenDurationDays,
       expiresAt: group.config.offer.expiresAt,
+      requiresEgyptianNationalId:
+        group.config.offer.requiresEgyptianNationalId,
     },
   };
 }
 
 async function loadGroupByToken(token: string) {
-  return db.friendOfferGroup.findUnique({
+  const directGroup = await db.friendOfferGroup.findUnique({
     where: { inviteToken: token },
+    select: { id: true, individualInvitesEnabled: true },
+  });
+  const singleLink = directGroup ? null :
+    await db.friendOfferInviteLink.findUnique({
+      where: { token },
+      select: { groupId: true, status: true, expiresAt: true },
+    });
+  if (!directGroup &&
+      (singleLink?.status !== "pending" ||
+       singleLink.expiresAt.getTime() <= Date.now())) return null;
+  if (directGroup?.individualInvitesEnabled) {
+    // Group tokens are for internal checkout only, never for new invitations.
+    const user = await getCurrentAppUser().catch(() => null);
+    const own = user && await db.friendOfferParticipant.findFirst({
+      where: { groupId: directGroup.id, userId: user.id, status: { not: "cancelled" } },
+      select: { id: true },
+    });
+    if (!own) return null;
+  }
+  const groupId = directGroup?.id ?? singleLink!.groupId;
+  return db.friendOfferGroup.findUnique({
+    where: { id: groupId },
     include: {
       config: {
         include: {
@@ -172,6 +204,7 @@ async function loadGroupByToken(token: string) {
               durationDays: true,
               expiresAt: true,
               isActive: true,
+              requiresEgyptianNationalId: true,
             },
           },
         },
@@ -234,7 +267,7 @@ export async function GET(req: Request) {
     group.status = "expired";
   }
 
-  return NextResponse.json(publicGroupShape(group, currentUser?.id ?? null));
+  return NextResponse.json(publicGroupShape(group, currentUser?.id ?? null, token));
 }
 
 export async function POST(req: Request) {
@@ -252,6 +285,7 @@ export async function POST(req: Request) {
     offerId?: string;
     token?: string;
     matchingEnabled?: boolean;
+    egyptianNationalId?: string;
   } | null;
 
   if (!body?.action) {
@@ -291,6 +325,10 @@ export async function POST(req: Request) {
             priceBefore: true,
             features: true,
             featuresEn: true,
+            requiresBirthDate: true,
+            requiresEgyptianNationalId: true,
+            minAgeYears: true,
+            maxAgeYears: true,
           },
         },
       },
@@ -335,6 +373,27 @@ export async function POST(req: Request) {
         reused: true,
         group: publicGroupShape(loaded, currentUser.id),
       });
+    }
+
+    const studentEligibility =
+      evaluateFriendOfferStudentEligibility({
+        requiresBirthDate: config.offer.requiresBirthDate,
+        requiresEgyptianNationalId:
+          config.offer.requiresEgyptianNationalId,
+        minAgeYears: config.offer.minAgeYears,
+        maxAgeYears: config.offer.maxAgeYears,
+        egyptianNationalId: body.egyptianNationalId,
+        now,
+      });
+
+    if (!studentEligibility.eligible) {
+      return NextResponse.json(
+        {
+          error: studentEligibility.message,
+          code: studentEligibility.code,
+        },
+        { status: 400 },
+      );
     }
 
     if (
@@ -435,67 +494,18 @@ export async function POST(req: Request) {
       try {
         const group = await db.$transaction(
           async (tx) => {
-            let resolvedMembershipId = config.offer.membershipId ?? null;
-
-            if (!resolvedMembershipId) {
-              const syntheticMarker = `__offer_subscription__:${config.offer.id}`;
-
-              const existingSynthetic = await tx.membership.findFirst({
-                where: {
-                  subtitle: syntheticMarker,
-                  isActive: false,
-                },
-                select: { id: true },
-              });
-
-              if (existingSynthetic) {
-                resolvedMembershipId = existingSynthetic.id;
-              } else {
-                const syntheticMembership = await tx.membership.create({
-                  data: {
-                    name: config.offer.title,
-                    nameEn: config.offer.titleEn ?? config.offer.title,
-                    kind: "subscription",
-                    price: config.offer.specialPrice ?? 0,
-                    priceBefore: config.offer.specialPrice ?? 0,
-                    priceAfter: config.offer.specialPrice ?? 0,
-                    duration: config.offer.durationDays ?? 30,
-                    cycle: "custom",
-                    sessionsCount: config.offer.sessionsCount ?? null,
-                    features: JSON.stringify([
-                      config.offer.description || "Special offer subscription",
-                    ]),
-                    featuresEn: JSON.stringify([
-                      config.offer.descriptionEn ||
-                        "Special offer subscription",
-                    ]),
-                    maxClasses: -1,
-                    walletBonus: 0,
-                    isFeatured: false,
-                    isActive: false,
-                    subtitle: syntheticMarker,
-                  },
-                  select: { id: true },
-                });
-
-                resolvedMembershipId = syntheticMembership.id;
-
-                await tx.offer.update({
-                  where: { id: config.offer.id },
-                  data: {
-                    membershipId: syntheticMembership.id,
-                  },
-                });
-              }
-            }
-
-            if (!resolvedMembershipId) {
-              throw new Error("FRIEND_OFFER_MEMBERSHIP_RESOLUTION_FAILED");
-            }
-
+            // V4 consolidated: new Friend Offer groups own independent rights.
+            // Never create/attach a synthetic Membership or change Offer.membershipId.
             const resolvedOfferTermsSnapshot = JSON.stringify({
               ...(JSON.parse(offerTermsSnapshot) as Record<string, unknown>),
-              membershipId: resolvedMembershipId,
+              bookingPatternSnapshot: JSON.stringify({
+                version: 1,
+                policy: resolveBookingPolicy({
+                  kind: "offer",
+                  durationDays: config.offer.durationDays ?? 30,
+                  sessionsCount: config.offer.sessionsCount ?? null,
+                }),
+              }),
             });
             const created = await tx.friendOfferGroup.create({
               data: {
@@ -507,6 +517,7 @@ export async function POST(req: Request) {
                 offerTermsSnapshot: resolvedOfferTermsSnapshot,
                 eligibilitySnapshot,
                 matchingEnabled: body.matchingEnabled === true,
+                individualInvitesEnabled: true,
                 expiresAt,
               },
             });
@@ -571,8 +582,29 @@ export async function POST(req: Request) {
     try {
       const result = await db.$transaction(
         async (tx) => {
-          const group = await tx.friendOfferGroup.findUnique({
+          const link = await tx.friendOfferInviteLink.findUnique({
+            where: { token },
+          });
+          const legacy = link ? null : await tx.friendOfferGroup.findUnique({
             where: { inviteToken: token },
+            select: { id: true, individualInvitesEnabled: true },
+          });
+          // Never accept a shared group token on a new individual-invite group.
+          if (!link && (!legacy || legacy.individualInvitesEnabled)) {
+            return { kind: "NOT_FOUND" as const };
+          }
+          const groupId = link?.groupId ?? legacy!.id;
+          // This lock is shared by creator invitation cancellation and
+          // admin matching, protecting against oversubscription races.
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM FriendOfferGroup WHERE id = ${groupId} FOR UPDATE
+          `;
+          if (locked.length !== 1) return { kind: "NOT_FOUND" as const };
+          if (link && (link.status !== "pending" || link.expiresAt <= new Date())) {
+            return { kind: "INVITE_CANCELLED" as const };
+          }
+          const group = await tx.friendOfferGroup.findUnique({
+            where: { id: groupId },
             include: {
               config: {
                 include: {
@@ -581,6 +613,10 @@ export async function POST(req: Request) {
                       id: true,
                       isActive: true,
                       expiresAt: true,
+                      requiresBirthDate: true,
+                      requiresEgyptianNationalId: true,
+                      minAgeYears: true,
+                      maxAgeYears: true,
                     },
                   },
                 },
@@ -659,6 +695,26 @@ export async function POST(req: Request) {
             };
           }
 
+          const studentEligibility =
+            evaluateFriendOfferStudentEligibility({
+              requiresBirthDate:
+                group.config.offer.requiresBirthDate,
+              requiresEgyptianNationalId:
+                group.config.offer.requiresEgyptianNationalId,
+              minAgeYears: group.config.offer.minAgeYears,
+              maxAgeYears: group.config.offer.maxAgeYears,
+              egyptianNationalId: body.egyptianNationalId,
+              now,
+            });
+
+          if (!studentEligibility.eligible) {
+            return {
+              kind: "STUDENT_NOT_ELIGIBLE" as const,
+              message: studentEligibility.message,
+              code: studentEligibility.code,
+            };
+          }
+
           const activeParticipants = group.participants.filter(
             (participant) => participant.status !== "cancelled",
           ).length;
@@ -706,6 +762,13 @@ export async function POST(req: Request) {
             });
           }
 
+          if (link) {
+            const accepted = await tx.friendOfferInviteLink.updateMany({
+              where: { id: link.id, groupId: group.id, status: "pending", expiresAt: { gt: now } },
+              data: { status: "accepted", acceptedByUserId: currentUser.id, acceptedAt: now },
+            });
+            if (accepted.count !== 1) throw new Error("FRIEND_SINGLE_INVITE_ALREADY_USED");
+          }
           const nextCount = activeParticipants + 1;
           const nextStatus =
             nextCount >= group.config.requiredMembers ? "ready" : "waiting";
@@ -727,6 +790,9 @@ export async function POST(req: Request) {
         },
       );
 
+      if (result.kind === "INVITE_CANCELLED") {
+        return NextResponse.json({ error: "تم إلغاء هذه الدعوة أو انتهت صلاحيتها." }, { status: 410 });
+      }
       if (result.kind === "NOT_FOUND") {
         return NextResponse.json(
           { error: "دعوة عرض الصحاب غير موجودة." },
@@ -752,6 +818,13 @@ export async function POST(req: Request) {
         return NextResponse.json(
           { error: "تم إكمال هذه المجموعة بالفعل." },
           { status: 409 },
+        );
+      }
+
+      if (result.kind === "STUDENT_NOT_ELIGIBLE") {
+        return NextResponse.json(
+          { error: result.message, code: result.code },
+          { status: 400 },
         );
       }
 

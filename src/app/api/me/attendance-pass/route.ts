@@ -6,6 +6,8 @@ import { sumMembershipBookingUnits } from "@/lib/membership-session-units";
 import {
   buildAttendancePayload,
   ensureMembershipAttendancePass,
+  ensureOfferBoxAttendancePass,
+  ensureIndependentFriendAttendancePass,
   ensurePrivateAttendancePass,
   getPrivateSessionsRemaining,
   isMembershipEligibleForAttendance,
@@ -67,7 +69,7 @@ export async function GET() {
 
   const passes: Array<{
     id: string;
-    kind: "membership" | "private_session";
+    kind: "membership" | "private_session" | "offer_box" | "friend_offer";
     label: string;
     code: string;
     payload: string;
@@ -125,6 +127,114 @@ export async function GET() {
                 ),
       });
     }
+  }
+
+  const offerEntitlements = await db.offerBoxEntitlement.findMany({
+    where: {
+      userId: user.id,
+      status: "active",
+      bookings: {
+        some: {
+          status: "confirmed",
+          userMembershipId: null,
+          userId: user.id,
+        },
+      },
+      purchase: {
+        status: "redeemed",
+        redeemedUserMembershipId: null,
+        paidAt: { not: null },
+      },
+    },
+    select: {
+      id: true,
+      totalSessions: true,
+      purchase: { select: { offerSnapshot: true } },
+      bookings: {
+        where: {
+          userId: user.id,
+          userMembershipId: null,
+          status: "attended",
+        },
+        select: {
+          status: true,
+          entitlementUnits: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  for (const entitlement of offerEntitlements) {
+    const pass = await ensureOfferBoxAttendancePass(
+      entitlement.id,
+      user.id,
+    );
+
+    if (!pass || pass.status !== "active") continue;
+
+    let label = "Offer Box";
+
+    try {
+      const snapshot = JSON.parse(
+        entitlement.purchase.offerSnapshot,
+      );
+
+      if (
+        typeof snapshot?.offer?.title === "string" &&
+        snapshot.offer.title.trim()
+      ) {
+        label = snapshot.offer.title;
+      }
+    } catch {}
+
+    const payload = buildAttendancePayload(pass.code);
+
+    const qrDataUrl = await QRCode.toDataURL(payload, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 360,
+    });
+
+    passes.push({
+      id: pass.id,
+      kind: "offer_box",
+      label,
+      code: pass.code,
+      payload,
+      qrDataUrl,
+      remainingSessions:
+        entitlement.totalSessions === null
+          ? null
+          : Math.max(
+              0,
+              entitlement.totalSessions -
+                sumMembershipBookingUnits(
+                  entitlement.bookings,
+                  ["attended"],
+                ),
+            ),
+    });
+  }
+
+  // Separate customer QR cards for independently settled Friend Offer rights.
+  const friendRights = await db.friendOfferEntitlement.findMany({
+    where: {userId: user.id, status: "active",
+      bookings: {some: {userId: user.id, userMembershipId: null, status: "confirmed"}}},
+    select: {id: true, totalSessions: true,
+      bookings: {where: {userId: user.id, userMembershipId: null, status: "attended"},
+        select: {status: true, entitlementUnits: true}}},
+    orderBy: {createdAt: "desc"},
+  });
+  for (const entitlement of friendRights) {
+    const pass = await ensureIndependentFriendAttendancePass(entitlement.id, user.id);
+    if (!pass || pass.status !== "active") continue;
+    const payload = buildAttendancePayload(pass.code);
+    const qrDataUrl = await QRCode.toDataURL(payload, {errorCorrectionLevel: "M", margin: 1, width: 360});
+    passes.push({id: pass.id, kind: "friend_offer", label: pass.label ?? "عرض الصحاب",
+      code: pass.code, payload, qrDataUrl,
+      remainingSessions: entitlement.totalSessions === null ? null :
+        Math.max(0, entitlement.totalSessions - sumMembershipBookingUnits(entitlement.bookings, ["attended"]))});
   }
 
   for (const application of privateApplications) {

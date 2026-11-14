@@ -206,6 +206,7 @@ export const ROLE_FEATURE_TEMPLATES: Record<AdminRole, AdminFeature[]> = {
 };
 
 export const SECTION_FEATURE_MAP: Record<Section, AdminFeature> = {
+  "pink-friday-popup": "offers",
   overview: "overview",
   approvals: "approvals",
   analytics: "analytics_view",
@@ -317,6 +318,9 @@ export function canAccessAdminSection(
   permissions: string[] | undefined,
   section: Section,
 ) {
+  if (section === "pink-friday-popup") {
+    return role === "admin";
+  }
   if (section === "settings") {
     return (
       canAccessAdminFeature(role, permissions, "settings") ||

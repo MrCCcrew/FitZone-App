@@ -1,11 +1,14 @@
-import { db } from "@/lib/db";
+import { asDbTransactionClient, db } from "@/lib/db";
+import { lockMembershipLifecycleUserTx } from "@/lib/membership-lifecycle-lock";
 import {
   ensureMembershipAttendancePass,
+  ensureOfferBoxAttendancePass,
+  ensureIndependentFriendAttendancePass,
   getPrivateSessionsRemaining,
   isPrivateApplicationEligibleForAttendance,
 } from "@/lib/attendance";
 import { isBookingOperational } from "@/lib/booking-operational";
-import { scheduleSlotInstant } from "@/lib/fitzone-time";
+import { cairoCalendarDateKey, scheduleSlotInstant } from "@/lib/fitzone-time";
 import { getBookingEntitlementUnits } from "@/lib/membership-session-units";
 
 export type AttendanceSource = "manual" | "qr";
@@ -50,6 +53,7 @@ export async function markClassAttendance(input: {
   bookingId: string;
   scannedByUserId: string;
   source: AttendanceSource;
+  scannedPassId?: string;
 }): Promise<MarkClassAttendanceResult> {
   const booking = await db.booking.findUnique({
     where: { id: input.bookingId },
@@ -78,6 +82,14 @@ export async function markClassAttendance(input: {
 
   if (!booking) {
     return { ok: false, code: "BOOKING_NOT_FOUND" };
+  }
+
+  if (booking.friendOfferEntitlementId) {
+    return markIndependentFriendClassAttendance(input, booking.userId);
+  }
+
+  if (booking.offerBoxEntitlementId) {
+    return markOfferBoxClassAttendance(input, booking.userId);
   }
 
   const responseDetails = {
@@ -341,6 +353,343 @@ export async function markClassAttendance(input: {
         ? Math.max(0, sessionLimit - result.sessionsUsed)
         : null,
   };
+}
+
+/** Independent friend-offer check-in, protected by entitlement + booking locks. */
+async function markIndependentFriendClassAttendance(
+  input: { bookingId: string; scannedByUserId: string; source: AttendanceSource; scannedPassId?: string },
+  userId: string,
+): Promise<MarkClassAttendanceResult> {
+  const initial = await db.booking.findUnique({
+    where: { id: input.bookingId },
+    select: { userId: true, friendOfferEntitlementId: true, userMembershipId: true, offerBoxEntitlementId: true },
+  });
+  if (!initial || initial.userId !== userId || !initial.friendOfferEntitlementId ||
+      initial.userMembershipId !== null || initial.offerBoxEntitlementId !== null)
+    return { ok: false, code: "BOOKING_NOT_OPERATIONAL" };
+  const entitlementId = initial.friendOfferEntitlementId;
+  const pass = await ensureIndependentFriendAttendancePass(entitlementId, userId);
+  if (!pass || pass.status !== "active")
+    return { ok: false, code: "ATTENDANCE_PASS_UNAVAILABLE" };
+  if (input.source === "qr" && pass.id !== input.scannedPassId)
+    return { ok: false, code: "ATTENDANCE_PASS_NOT_ACTIVE" };
+  return db.$transaction(async (tx) => {
+    await lockMembershipLifecycleUserTx(asDbTransactionClient(tx), userId);
+    await tx.$queryRaw`SELECT id FROM FriendOfferEntitlement WHERE id = ${entitlementId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM Booking WHERE id = ${input.bookingId} FOR UPDATE`;
+    const booking = await tx.booking.findUnique({
+      where: { id: input.bookingId },
+      include: {
+        user: {select: {name: true, isActive: true}},
+        schedule: {include: {class: {include: {trainer: true}}}},
+      },
+    });
+    if (!booking) return {ok: false as const, code: "BOOKING_NOT_FOUND" as const};
+    if (!booking.user.isActive || booking.userId !== userId ||
+        booking.friendOfferEntitlementId !== entitlementId ||
+        booking.userMembershipId !== null || booking.offerBoxEntitlementId !== null)
+      return {ok: false as const, code: "BOOKING_NOT_OPERATIONAL" as const};
+    const right = await tx.friendOfferEntitlement.findUnique({
+      where: {id: entitlementId},
+      include: {participant: {select: {userId: true, userMembershipId: true, paymentTransactionId: true, status: true}},
+        paymentTransaction: {select: {userId: true, membershipId: true, provider: true, status: true}}},
+    });
+    if (!right || right.status !== "active" || right.userId !== userId ||
+        right.participant.userId !== userId || right.participant.userMembershipId !== null ||
+        right.participant.paymentTransactionId !== right.paymentTransactionId ||
+        !["paid", "activated"].includes(right.participant.status) ||
+        right.paymentTransaction.userId !== userId || right.paymentTransaction.status !== "paid" ||
+        right.paymentTransaction.provider !== "paymob" || right.paymentTransaction.membershipId !== null)
+      return {ok: false as const, code: "BOOKING_NOT_OPERATIONAL" as const};
+    await tx.$queryRaw`SELECT id FROM AttendancePass WHERE id = ${pass.id} FOR UPDATE`;
+    const currentPass = await tx.attendancePass.findUnique({where: {id: pass.id}});
+    if (!currentPass || currentPass.status !== "active" || currentPass.kind !== "friend_offer" ||
+        currentPass.userId !== userId || currentPass.friendOfferEntitlementId !== entitlementId ||
+        currentPass.userMembershipId !== null || currentPass.offerBoxEntitlementId !== null ||
+        currentPass.privateSessionApplicationId !== null)
+      return {ok: false as const, code: "ATTENDANCE_PASS_NOT_ACTIVE" as const};
+    const details = {bookingId: booking.id, customerName: booking.user.name ?? "Member",
+      className: booking.schedule.class.name, trainerName: booking.schedule.class.trainer.name,
+      time: booking.schedule.time};
+    if (booking.status === "attended") return {ok: true as const, status: "already_attended" as const, ...details};
+    if (booking.status !== "confirmed") return {ok: false as const, code: "BOOKING_NOT_CONFIRMED" as const};
+    const when = scheduleSlotInstant(booking.schedule.date, booking.schedule.time);
+    if (!Number.isFinite(when.getTime())) return {ok: false as const, code: "BOOKING_NOT_OPERATIONAL" as const};
+    if (when.getTime() > Date.now()) return {ok: false as const, code: "FUTURE_SESSION" as const};
+    const day = cairoCalendarDateKey(when);
+    if (day < cairoCalendarDateKey(right.startDate) || day > cairoCalendarDateKey(right.endDate))
+      return {ok: false as const, code: "BOOKING_NOT_OPERATIONAL" as const};
+    const claimed = await tx.booking.updateMany({
+      where: {id: booking.id, userId, scheduleId: booking.scheduleId, status: "confirmed",
+        userMembershipId: null, offerBoxEntitlementId: null, friendOfferEntitlementId: entitlementId},
+      data: {status: "attended"},
+    });
+    if (claimed.count !== 1) return {ok: false as const, code: "BOOKING_STATUS_CHANGED" as const};
+    const check = await tx.attendanceCheckIn.create({data: {
+      passId: pass.id, userId, bookingId: booking.id, scheduleId: booking.scheduleId,
+      scannedByUserId: input.scannedByUserId, checkInType: "class",
+    }});
+    const attended = await tx.booking.findMany({
+      where: {friendOfferEntitlementId: entitlementId, userMembershipId: null, userId, status: "attended"},
+      select: {entitlementUnits: true},
+    });
+    const sessionsUsed = attended.reduce((n, b) => n + getBookingEntitlementUnits(b), 0);
+    await tx.attendancePass.update({where: {id: pass.id}, data: {lastUsedAt: new Date()}});
+    await tx.notification.create({data: {userId, title: `تم تسجيل حضور ${booking.schedule.class.name}`,
+      body: "تم تسجيل حضور حصة عرض الصحاب المستقل.", type: "success"}});
+    return {ok: true as const, status: "checked_in" as const, ...details, checkInId: check.id,
+      membershipExpired: false, sessionsUsed,
+      sessionsRemaining: right.totalSessions === null ? null : Math.max(0, right.totalSessions - sessionsUsed)};
+  });
+}
+
+async function markOfferBoxClassAttendance(
+  input: {
+    bookingId: string;
+    scannedByUserId: string;
+    source: AttendanceSource;
+    scannedPassId?: string;
+  },
+  userId: string,
+): Promise<MarkClassAttendanceResult> {
+  const initial = await db.booking.findUnique({
+    where: { id: input.bookingId },
+    select: {
+      userId: true,
+      offerBoxEntitlementId: true,
+      userMembershipId: true,
+    },
+  });
+
+  if (
+    !initial ||
+    initial.userId !== userId ||
+    !initial.offerBoxEntitlementId ||
+    initial.userMembershipId !== null
+  ) {
+    return { ok: false, code: "BOOKING_NOT_OPERATIONAL" };
+  }
+
+  const entitlementId = initial.offerBoxEntitlementId;
+
+  const issuedPass = await ensureOfferBoxAttendancePass(
+    entitlementId,
+    userId,
+  );
+
+  if (!issuedPass) {
+    return { ok: false, code: "ATTENDANCE_PASS_UNAVAILABLE" };
+  }
+
+  if (
+    issuedPass.status !== "active" ||
+    (input.source === "qr" && input.scannedPassId !== issuedPass.id)
+  ) {
+    return { ok: false, code: "ATTENDANCE_PASS_NOT_ACTIVE" };
+  }
+
+  return db.$transaction(async (tx) => {
+    await lockMembershipLifecycleUserTx(
+      asDbTransactionClient(tx),
+      userId,
+    );
+
+    await tx.$queryRaw`
+      SELECT id FROM OfferBoxEntitlement
+      WHERE id = ${entitlementId}
+      FOR UPDATE
+    `;
+
+    await tx.$queryRaw`
+      SELECT id FROM Booking
+      WHERE id = ${input.bookingId}
+      FOR UPDATE
+    `;
+
+    const booking = await tx.booking.findUnique({
+      where: { id: input.bookingId },
+      include: {
+        user: { select: { name: true, isActive: true } },
+        schedule: {
+          include: {
+            class: { include: { trainer: true } },
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      return { ok: false, code: "BOOKING_NOT_FOUND" };
+    }
+
+    if (
+      booking.userId !== userId ||
+      booking.userMembershipId !== null ||
+      booking.offerBoxEntitlementId !== entitlementId ||
+      !booking.user.isActive
+    ) {
+      return { ok: false, code: "BOOKING_NOT_OPERATIONAL" };
+    }
+
+    const entitlement = await tx.offerBoxEntitlement.findUnique({
+      where: { id: entitlementId },
+      include: {
+        purchase: {
+          select: {
+            userId: true,
+            status: true,
+            paidAt: true,
+            redeemedUserMembershipId: true,
+          },
+        },
+      },
+    });
+
+    if (
+      !entitlement ||
+      entitlement.userId !== userId ||
+      entitlement.status !== "active" ||
+      entitlement.purchase.userId !== userId ||
+      entitlement.purchase.status !== "redeemed" ||
+      !entitlement.purchase.paidAt ||
+      entitlement.purchase.redeemedUserMembershipId !== null
+    ) {
+      return { ok: false, code: "BOOKING_NOT_OPERATIONAL" };
+    }
+
+    await tx.$queryRaw`
+      SELECT id FROM AttendancePass
+      WHERE id = ${issuedPass.id}
+      FOR UPDATE
+    `;
+
+    const pass = await tx.attendancePass.findUnique({
+      where: { id: issuedPass.id },
+    });
+
+    if (
+      !pass ||
+      pass.userId !== userId ||
+      pass.offerBoxEntitlementId !== entitlementId ||
+      pass.userMembershipId !== null ||
+      pass.privateSessionApplicationId !== null ||
+      pass.kind !== "offer_box" ||
+      pass.status !== "active"
+    ) {
+      return { ok: false, code: "ATTENDANCE_PASS_NOT_ACTIVE" };
+    }
+
+    const details = {
+      bookingId: booking.id,
+      customerName: booking.user.name ?? "Member",
+      className: booking.schedule.class.name,
+      trainerName: booking.schedule.class.trainer.name,
+      time: booking.schedule.time,
+    };
+
+    if (booking.status === "attended") {
+      return {
+        ok: true,
+        status: "already_attended",
+        ...details,
+      };
+    }
+
+    if (booking.status !== "confirmed") {
+      return { ok: false, code: "BOOKING_NOT_CONFIRMED" };
+    }
+
+    const slot = scheduleSlotInstant(
+      booking.schedule.date,
+      booking.schedule.time,
+    );
+
+    if (!Number.isFinite(slot.getTime())) {
+      return { ok: false, code: "BOOKING_NOT_OPERATIONAL" };
+    }
+
+    if (slot.getTime() > Date.now()) {
+      return { ok: false, code: "FUTURE_SESSION" };
+    }
+
+    const slotDay = cairoCalendarDateKey(slot);
+
+    if (
+      slotDay < cairoCalendarDateKey(entitlement.startDate) ||
+      slotDay > cairoCalendarDateKey(entitlement.endDate)
+    ) {
+      return { ok: false, code: "BOOKING_NOT_OPERATIONAL" };
+    }
+
+    const claimed = await tx.booking.updateMany({
+      where: {
+        id: booking.id,
+        userId,
+        userMembershipId: null,
+        offerBoxEntitlementId: entitlementId,
+        scheduleId: booking.scheduleId,
+        status: "confirmed",
+      },
+      data: { status: "attended" },
+    });
+
+    if (claimed.count !== 1) {
+      return { ok: false, code: "BOOKING_STATUS_CHANGED" };
+    }
+
+    const checkIn = await tx.attendanceCheckIn.create({
+      data: {
+        passId: pass.id,
+        userId,
+        bookingId: booking.id,
+        scheduleId: booking.scheduleId,
+        scannedByUserId: input.scannedByUserId,
+        checkInType: "class",
+      },
+    });
+
+    const attended = await tx.booking.findMany({
+      where: {
+        offerBoxEntitlementId: entitlementId,
+        userMembershipId: null,
+        userId,
+        status: "attended",
+      },
+      select: { entitlementUnits: true },
+    });
+
+    const sessionsUsed = attended.reduce(
+      (total, row) => total + getBookingEntitlementUnits(row),
+      0,
+    );
+
+    await tx.attendancePass.update({
+      where: { id: pass.id },
+      data: { lastUsedAt: new Date() },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId,
+        title: `تم تسجيل حضور ${booking.schedule.class.name}`,
+        body: "تم تسجيل حضور حصة العرض المستقل.",
+        type: "success",
+      },
+    });
+
+    return {
+      ok: true,
+      status: "checked_in",
+      ...details,
+      checkInId: checkIn.id,
+      membershipExpired: false,
+      sessionsUsed,
+      sessionsRemaining:
+        entitlement.totalSessions === null
+          ? null
+          : Math.max(0, entitlement.totalSessions - sessionsUsed),
+    };
+  });
 }
 
 export type ConsumePrivateSessionResult =

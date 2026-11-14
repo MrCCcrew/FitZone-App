@@ -140,6 +140,30 @@ export default function Subscriptions() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [showLinkedInactivePlans, setShowLinkedInactivePlans] =
+    useState(false);
+
+  const linkedInactivePlanIds = useMemo(() => {
+    const linkedIds = new Set(
+      offers
+        .map((offer) => offer.membershipId)
+        .filter((id): id is string => Boolean(id)),
+    );
+
+    return new Set(
+      plans
+        .filter((plan) => !plan.active && linkedIds.has(plan.id))
+        .map((plan) => plan.id),
+    );
+  }, [plans, offers]);
+
+  const displayedPlans = useMemo(
+    () =>
+      showLinkedInactivePlans
+        ? plans
+        : plans.filter((plan) => !linkedInactivePlanIds.has(plan.id)),
+    [plans, linkedInactivePlanIds, showLinkedInactivePlans],
+  );
   const [goals, setGoals] = useState<Goal[]>([]);
   const [products, setProducts] = useState<Array<{ id: string; name: string }>>(
     [],
@@ -633,7 +657,8 @@ export default function Subscriptions() {
               اشتراكات النادي
             </h3>
             <p className="mt-1 text-sm text-[#d7aabd]">
-              {plans.length.toLocaleString("ar-EG")} اشتراك -{" "}
+              {displayedPlans.length.toLocaleString("ar-EG")} اشتراك معروض من أصل{" "}
+              {plans.length.toLocaleString("ar-EG")} -{" "}
               {plans
                 .filter((plan) => plan.active)
                 .length.toLocaleString("ar-EG")}{" "}
@@ -648,14 +673,35 @@ export default function Subscriptions() {
           </button>
         </div>
 
-        {plans.length === 0 ? (
+        {linkedInactivePlanIds.size > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(255,188,219,0.14)] bg-black/10 px-4 py-3">
+            <p className="text-xs text-[#d7aabd]">
+              {linkedInactivePlanIds.size.toLocaleString("ar-EG")} سجلات اشتراك غير نشطة مرتبطة بعروض.
+              محفوظة لحقوق العملاء، ويمكن إظهارها للمراجعة والإدارة.
+            </p>
+            <button
+              type="button"
+              aria-pressed={showLinkedInactivePlans}
+              onClick={() =>
+                setShowLinkedInactivePlans((current) => !current)
+              }
+              className="rounded-lg border border-[rgba(255,188,219,0.2)] px-3 py-2 text-xs font-bold text-[#fff4f8]"
+            >
+              {showLinkedInactivePlans
+                ? "إخفاء سجلات العروض القديمة"
+                : "عرض سجلات العروض القديمة"}
+            </button>
+          </div>
+        )}
+
+        {displayedPlans.length === 0 ? (
           <AdminEmptyState
             title="لا توجد اشتراكات بعد"
             description="ابدئي بإضافة أول اشتراك ليظهر في صفحة الاشتراكات ولوحة الإدارة."
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {plans.map((plan) => (
+            {displayedPlans.map((plan) => (
               <div
                 key={plan.id}
                 className={`rounded-[24px] border p-5 ${

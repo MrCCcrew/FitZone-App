@@ -19,13 +19,25 @@ if (!raw) {
 const url = new URL(raw);
 
 if (
-  process.env.APP_ENV !== "test" ||
+  (
+    process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1"
+      ? !(
+          process.env.APP_ENV === "test" &&
+          process.env.NODE_ENV === "test" &&
+          url.protocol === "mysql:" &&
+          url.hostname === "127.0.0.1" &&
+          url.port === "3306" &&
+          url.pathname === "/fitzone_final_release_r13_test" &&
+          decodeURIComponent(url.username) === "fitzone_r13_user"
+        )
+      : (process.env.APP_ENV !== "test" ||
   process.env.NODE_ENV !== "test" ||
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
   url.port !== "3306" ||
   decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  url.pathname !== "/fitzone_test")
+  )
 ) {
   throw new Error("REFUSING: Compensation API tests require fitzone_test");
 }

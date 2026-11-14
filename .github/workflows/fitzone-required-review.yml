@@ -1,0 +1,392 @@
+name: FitZone Required Review - Isolated CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitzone-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # RELEASE_20261110: Paymob Intention renewal remains hard-disabled.
+  # Required CI tests the current no-renewal financial safety contract.
+  # membership-paymob-renewal-race.test.ts remains in the repository
+  # as a future capability contract; its 8 failing expectations
+  # are NOT considered passed or approved for this release.
+  review-unit:
+    name: Finance Paymob HR and Offers Unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    env:
+      CI: "true"
+      NODE_ENV: test
+      APP_ENV: test
+      PAYMOB_ENV: test
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      FITZONE_R13_ISOLATED_INTEGRATION: "0"
+      DATABASE_URL: mysql://blocked:blocked@127.0.0.1:1/fitzone_test
+      TEST_DATABASE_URL: mysql://blocked:blocked@127.0.0.1:1/fitzone_test
+      OPENAI_API_KEY: ""
+
+    steps:
+      - name: Checkout untrusted PR without retained credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Setup pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --include=dev --no-audit --no-fund
+
+      - name: Generate Prisma client without production database
+        run: node node_modules/prisma/build/index.js generate --config prisma.config.ts
+
+      - name: TypeScript compilation gate
+        run: node node_modules/typescript/bin/tsc --noEmit --pretty false
+
+      - name: Focused financial and application safety regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files <<'FITZONE_TEST_FILES'
+          __tests__/unit/customer-statement-financial-truth.test.ts
+          __tests__/unit/wallet-topup-customer-ledger-route.test.ts
+          __tests__/unit/membership-accounting-financial-truth.test.ts
+          __tests__/unit/wallet-transaction-source-taxonomy.contract.test.ts
+          __tests__/unit/api/admin-payment-delete-evidence-guard.test.ts
+          __tests__/unit/api/expired-membership-paymob-finance-review.test.ts
+          __tests__/unit/api/expired-membership-paymob-reconciliation-route.test.ts
+          __tests__/unit/api/paymob-webhook-evidence-cas.test.ts
+          __tests__/unit/egyptian-national-id-age.test.ts
+          __tests__/unit/lib/payments/expired-membership-paymob-reconciliation.test.ts
+          __tests__/unit/lib/payments/membership-checkout-retry-decision.test.ts
+          __tests__/unit/lib/payments/membership-paymob-expired-hold-guard.test.ts
+          __tests__/unit/lib/payments/paymob-renewal-release-safety.test.ts
+          __tests__/unit/lib/payments/paymob-existing-live-checkout-contract.test.ts
+          __tests__/unit/lib/payments/paymob-intention-renewal-contract.test.ts
+          __tests__/unit/lib/payments/paymob-order-paid-proof.test.ts
+          __tests__/unit/lib/payments/paymob-production-settings-compatibility.test.ts
+          __tests__/unit/lib/payments/paymob-retained-payment-proof.test.ts
+          __tests__/unit/lib/payments/paymob-transaction-identity.test.ts
+          __tests__/unit/offer-age-eligibility.test.ts
+          __tests__/unit/offer-box-frozen-eligibility.contract.test.ts
+          __tests__/unit/offer-box-pricing.test.ts
+          __tests__/unit/offer-box-purchases.test.ts
+          __tests__/unit/profile-birth-date.test.ts
+          __tests__/unit/lib/offer-box/entitlement-contract.test.ts
+          __tests__/unit/lib/offer-box/redemption-settlement.test.ts
+          __tests__/unit/lib/offer-box/paid-staff-commission-tx.test.ts
+          __tests__/unit/lib/offer-box/legacy-commission-replay.test.ts
+          __tests__/unit/friend-offer-independent-contract.test.ts
+          __tests__/unit/friend-offer-independent-commission-economics.test.ts
+          __tests__/unit/friend-offer-provider-proof.test.ts
+          __tests__/unit/friend-offer-independent-booking-source.test.ts
+          __tests__/unit/commission-financial-history-guards.test.ts
+          __tests__/unit/lib/employee-compensation-permissions.test.ts
+          __tests__/unit/payroll-settings-admin-ui-wiring.test.ts
+          __tests__/unit/bookings-post-membership-eligibility.test.ts
+          __tests__/unit/lib/payments/coach-membership-earning-service.test.ts
+          __tests__/unit/membership-commission-snapshot-builder.test.ts
+          FITZONE_TEST_FILES
+          node node_modules/vitest/vitest.mjs run \
+            --maxWorkers=2 --fileParallelism=false "${files[@]}"
+
+  review-integration-legacy:
+    name: Finance and Booking Legacy MySQL Integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    services:
+      mysql:
+        image: mysql:8.0.36
+        env:
+          MYSQL_DATABASE: fitzone_test
+          MYSQL_USER: fitzone_test_user
+          MYSQL_PASSWORD: ci_fixture_only
+          MYSQL_ROOT_PASSWORD: ci_root_fixture_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      CI: "true"
+      NODE_ENV: test
+      APP_ENV: test
+      PAYMOB_ENV: test
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      FITZONE_R13_ISOLATED_INTEGRATION: "0"
+      DATABASE_URL: mysql://fitzone_test_user:ci_fixture_only@127.0.0.1:3306/fitzone_test
+      TEST_DATABASE_URL: mysql://fitzone_test_user:ci_fixture_only@127.0.0.1:3306/fitzone_test
+      OPENAI_API_KEY: ""
+
+    steps:
+      - name: Checkout PR without retained credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Setup pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --include=dev --no-audit --no-fund
+
+      - name: Verify isolated database identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const u = new URL(process.env.DATABASE_URL);
+            if (
+              process.env.NODE_ENV !== "test" ||
+              process.env.APP_ENV !== "test" ||
+              u.protocol !== "mysql:" ||
+              u.hostname !== "127.0.0.1" ||
+              u.port !== "3306" ||
+              u.pathname !== "/fitzone_test" ||
+              decodeURIComponent(u.username) !== "fitzone_test_user" ||
+              process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL
+            ) process.exit(1);
+          '
+          echo "ISOLATED_MYSQL_IDENTITY=PASS"
+
+      - name: Generate Prisma client
+        run: node node_modules/prisma/build/index.js generate --config prisma.config.ts
+
+      - name: Match ephemeral MySQL collation to historical migrations
+        shell: bash
+        env:
+          CI_MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CI_MYSQL_CONTAINER:-}" ]]; then
+            echo "CI_MYSQL_CONTAINER_MISSING"
+            exit 1
+          fi
+
+          case "$DATABASE_URL" in
+            mysql://fitzone_test_user:ci_fixture_only@127.0.0.1:3306/fitzone_test)
+              database=fitzone_test
+              ;;
+            mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test)
+              database=fitzone_final_release_r13_test
+              ;;
+            *)
+              echo "UNSAFE_COLLATION_TARGET_REFUSED"
+              exit 1
+              ;;
+          esac
+
+          if [[ "$DATABASE_URL" != "$TEST_DATABASE_URL" ||
+                "$NODE_ENV" != "test" ||
+                "$APP_ENV" != "test" ]]; then
+            echo "CI_MYSQL_IDENTITY_REFUSED"
+            exit 1
+          fi
+
+          docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot \
+            -e "ALTER DATABASE $database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+          actual="$(docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot --batch --skip-column-names \
+            -e "SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$database'")"
+
+          if [[ "$actual" != "utf8mb4_unicode_ci" ]]; then
+            echo "CI_COLLATION_VERIFICATION_FAILED"
+            exit 1
+          fi
+
+          echo "CI_MYSQL_COLLATION=PASS"
+      - name: Apply migrations to ephemeral CI database only
+        run: node node_modules/prisma/build/index.js migrate deploy --config prisma.config.ts
+
+      - name: Focused real MySQL integration regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files <<'FITZONE_TEST_FILES'
+          __tests__/integration/accounting/customer-statement-financial-truth.test.ts
+          __tests__/integration/booking-reschedule-service.test.ts
+          FITZONE_TEST_FILES
+          node node_modules/vitest/vitest.mjs run \
+            --maxWorkers=1 --fileParallelism=false "${files[@]}"
+
+  review-integration-r13:
+    name: HR Payroll and Offers R13 MySQL Integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    services:
+      mysql:
+        image: mysql:8.0.36
+        env:
+          MYSQL_DATABASE: fitzone_final_release_r13_test
+          MYSQL_USER: fitzone_r13_user
+          MYSQL_PASSWORD: ci_fixture_only
+          MYSQL_ROOT_PASSWORD: ci_root_fixture_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      CI: "true"
+      NODE_ENV: test
+      APP_ENV: test
+      PAYMOB_ENV: test
+      ALLOW_EXTERNAL_SIDE_EFFECTS: "false"
+      FITZONE_R13_ISOLATED_INTEGRATION: "1"
+      DATABASE_URL: mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test
+      TEST_DATABASE_URL: mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test
+      DIRECT_URL: mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test
+      OPENAI_API_KEY: ""
+
+    steps:
+      - name: Checkout PR without retained credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Setup pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --include=dev --no-audit --no-fund
+
+      - name: Verify isolated database identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const u = new URL(process.env.DATABASE_URL);
+            if (
+              process.env.NODE_ENV !== "test" ||
+              process.env.APP_ENV !== "test" ||
+              u.protocol !== "mysql:" ||
+              u.hostname !== "127.0.0.1" ||
+              u.port !== "3306" ||
+              u.pathname !== "/fitzone_final_release_r13_test" ||
+              decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+              process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL
+            ) process.exit(1);
+          '
+          echo "ISOLATED_MYSQL_IDENTITY=PASS"
+
+      - name: Generate Prisma client
+        run: node node_modules/prisma/build/index.js generate --config prisma.config.ts
+
+      - name: Match ephemeral MySQL collation to historical migrations
+        shell: bash
+        env:
+          CI_MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CI_MYSQL_CONTAINER:-}" ]]; then
+            echo "CI_MYSQL_CONTAINER_MISSING"
+            exit 1
+          fi
+
+          case "$DATABASE_URL" in
+            mysql://fitzone_test_user:ci_fixture_only@127.0.0.1:3306/fitzone_test)
+              database=fitzone_test
+              ;;
+            mysql://fitzone_r13_user:ci_fixture_only@127.0.0.1:3306/fitzone_final_release_r13_test)
+              database=fitzone_final_release_r13_test
+              ;;
+            *)
+              echo "UNSAFE_COLLATION_TARGET_REFUSED"
+              exit 1
+              ;;
+          esac
+
+          if [[ "$DATABASE_URL" != "$TEST_DATABASE_URL" ||
+                "$NODE_ENV" != "test" ||
+                "$APP_ENV" != "test" ]]; then
+            echo "CI_MYSQL_IDENTITY_REFUSED"
+            exit 1
+          fi
+
+          docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot \
+            -e "ALTER DATABASE $database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+          actual="$(docker exec \
+            -e MYSQL_PWD=ci_root_fixture_only \
+            "$CI_MYSQL_CONTAINER" \
+            mysql -uroot --batch --skip-column-names \
+            -e "SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '$database'")"
+
+          if [[ "$actual" != "utf8mb4_unicode_ci" ]]; then
+            echo "CI_COLLATION_VERIFICATION_FAILED"
+            exit 1
+          fi
+
+          echo "CI_MYSQL_COLLATION=PASS"
+      - name: Apply migrations to ephemeral CI database only
+        run: node node_modules/prisma/build/index.js migrate deploy --config prisma.config.ts
+
+      - name: Focused real MySQL integration regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files <<'FITZONE_TEST_FILES'
+          __tests__/integration/payroll-run-service.test.ts
+          __tests__/integration/payroll-eligibility-service.test.ts
+          __tests__/integration/payroll-adjustment-service.test.ts
+          __tests__/integration/payroll-position-salary-source.test.ts
+          __tests__/integration/employee-attendance-service.test.ts
+          __tests__/integration/employee-position-term-service.test.ts
+          __tests__/integration/commission-settlement-service.test.ts
+          __tests__/integration/offer-box/paid-staff-payroll-bridge.test.ts
+          __tests__/integration/offer-box/paid-staff-commission.integration.test.ts
+          __tests__/integration/offer-box/independent-lifecycle-final.test.ts
+          __tests__/integration/offer-box/independent-redemption-final.test.ts
+          __tests__/integration/payments/friend-offer-three-participant.test.ts
+          __tests__/integration/payments/friend-offer-independent-financial-e2e.test.ts
+          __tests__/integration/attendance-deduction-service.test.ts
+          __tests__/integration/head-coach-weekly-deduction-service.test.ts
+          __tests__/integration/coach-class-attendance-service.test.ts
+          __tests__/integration/coach-membership-earning-service.test.ts
+          __tests__/integration/payroll-head-coach-deduction.test.ts
+          __tests__/integration/position-payroll-policy-service.test.ts
+          FITZONE_TEST_FILES
+          node node_modules/vitest/vitest.mjs run \
+            --maxWorkers=1 --fileParallelism=false "${files[@]}"

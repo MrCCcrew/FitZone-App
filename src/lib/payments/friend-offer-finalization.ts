@@ -1,3 +1,4 @@
+import { settleIndependentFriendOfferGroup } from "@/lib/payments/friend-offer-independent-settlement";
 import "server-only";
 
 import { Prisma } from "@prisma/client";
@@ -598,6 +599,19 @@ export async function finalizeFriendOfferGroup(groupId: string) {
           throw new Error("FRIEND_GROUP_NOT_FOUND");
         }
 
+        // New groups have independently owned rights; NEVER route them through
+        // the historical membership-creating/superseding finalizer.
+        // Until the independent provider-proof + GL + booking orchestration is
+        // integrated, fail closed without touching purchases or memberships.
+        if (group.individualInvitesEnabled === true) {
+          return {
+            alreadyCompleted: false,
+            notReady: false,
+            independentSettlementRequired: true,
+            participantIds: [] as string[],
+          };
+        }
+
         if (group.status === "completed") {
           return {
             alreadyCompleted: true,
@@ -713,6 +727,10 @@ export async function finalizeFriendOfferGroup(groupId: string) {
       completed: true,
       alreadyCompleted: true,
     };
+  }
+
+  if ("independentSettlementRequired" in claim && claim.independentSettlementRequired) {
+    return settleIndependentFriendOfferGroup(trimmedGroupId);
   }
 
   if ("inProgress" in claim && claim.inProgress) {

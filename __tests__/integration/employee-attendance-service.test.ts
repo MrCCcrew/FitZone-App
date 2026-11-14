@@ -1,3 +1,22 @@
+import { afterEach as r15zaaAfterEach } from "vitest";
+/* R15Z-Y FIX2: isolated R13 test database guard. */
+if (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1") {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("R15ZY_DATABASE_URL_REQUIRED");
+  const u = new URL(raw);
+  if (
+    process.env.APP_ENV !== "test" ||
+    process.env.NODE_ENV !== "test" ||
+    u.protocol !== "mysql:" ||
+    u.hostname !== "127.0.0.1" ||
+    u.port !== "3306" ||
+    decodeURIComponent(u.username) !== "fitzone_r13_user" ||
+    u.pathname !== "/fitzone_final_release_r13_test" ||
+    (process.env.TEST_DATABASE_URL !== undefined &&
+      process.env.TEST_DATABASE_URL !== raw)
+  ) throw new Error("R15ZY_R13_DATABASE_IDENTITY_REJECTED");
+}
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
@@ -19,8 +38,8 @@ if (
   process.env.NODE_ENV !== "test" ||
   url.protocol !== "mysql:" ||
   url.hostname !== "127.0.0.1" ||
-  decodeURIComponent(url.username) !== "fitzone_test_user" ||
-  url.pathname !== "/fitzone_test"
+  decodeURIComponent(url.username) !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "fitzone_r13_user" : "fitzone_test_user") ||
+  url.pathname !== (process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1" ? "/fitzone_final_release_r13_test" : "/fitzone_test")
 ) {
   throw new Error(
     "REFUSING: Employee Attendance integration requires fitzone_test",
@@ -52,7 +71,7 @@ async function cleanup() {
           targetType: "AttendancePeriod",
         },
       ],
-      actorUserId: actorId || undefined,
+      actorUserId: actorId || "__R15ZAA_NO_ACTOR__",
     },
   });
 
@@ -64,9 +83,8 @@ async function cleanup() {
 
   await db.attendancePeriod.deleteMany({
     where: {
-      monthKey: {
-        in: ["2026-09", "2026-10", "2026-11"],
-      },
+      id: { in: [...r15zaaOwnedPeriodIds] },
+      monthKey: { in: ["2026-09", "2026-10", "2026-11"] },
     },
   });
 
@@ -83,7 +101,26 @@ async function cleanup() {
   }
 }
 
+const r15zaaOwnedPeriodIds = new Set<string>();
+
+r15zaaAfterEach(async () => {
+  const rows = await db.attendancePeriod.findMany({
+    where: { monthKey: { in: ["2026-09", "2026-10", "2026-11"] } },
+    select: { id: true },
+  });
+
+  for (const row of rows) {
+    r15zaaOwnedPeriodIds.add(row.id);
+  }
+});
+
 beforeAll(async () => {
+  const r15zaaExistingPeriods = await db.attendancePeriod.count({
+  where: { monthKey: { in: ["2026-09", "2026-10", "2026-11"] } },
+});
+if (r15zaaExistingPeriods !== 0) {
+  throw new Error("R15ZAA_PREEXISTING_PERIOD_COLLISION");
+}
   await cleanup();
 
   const user = await db.user.create({

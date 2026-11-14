@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+// Transaction-only unit tests must not initialize the real Prisma client.
+vi.mock("@/lib/db", () => ({ db: {} }));
+
 
 import { accrueCoachMembershipEarningTx } from "@/lib/employees/coach-membership-earning-service";
 

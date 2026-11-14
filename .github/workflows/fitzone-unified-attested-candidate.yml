@@ -25,6 +25,7 @@ jobs:
       contents: read
 
     env:
+      APPROVED_CANDIDATE_SHA: ${{ vars.FITZONE_APPROVED_CANDIDATE_SHA }}
       CI: "true"
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
@@ -48,7 +49,8 @@ jobs:
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$GITHUB_REPOSITORY" = "MrCCcrew/FitZone-App"
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$CANDIDATE_SHA" = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
+          [[ "$APPROVED_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$CANDIDATE_SHA" = "$APPROVED_CANDIDATE_SHA"
           echo "APPROVED_CANDIDATE_PIN=PASS"
           echo "ISOLATED_WORKFLOW_BRANCH=PASS"
 
@@ -307,7 +309,7 @@ jobs:
           if not re.fullmatch(r"[0-9a-f]{40}", commit):
               raise SystemExit("INVALID_PINNED_CANDIDATE")
 
-          if commit != "0ca9650c0a9b80af1d8ae1a8208f273da06a1785":
+          if commit != os.environ.get("APPROVED_CANDIDATE_SHA", ""):
               raise SystemExit("UNAPPROVED_SOURCE_COMMIT")
 
           if not tooling.is_file():
@@ -417,6 +419,9 @@ jobs:
       attestations: write
       artifact-metadata: write
 
+    env:
+      APPROVED_CANDIDATE_SHA: ${{ vars.FITZONE_APPROVED_CANDIDATE_SHA }}
+
     steps:
       - name: Download exact build output
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -457,7 +462,7 @@ jobs:
           import tempfile
           from pathlib import Path
 
-          expected_commit = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
+          expected_commit = os.environ.get("APPROVED_CANDIDATE_SHA", "")
           commit = os.environ.get("CANDIDATE_SHA", "")
 
           if not re.fullmatch(r"[0-9a-f]{40}", commit):
@@ -592,7 +597,7 @@ jobs:
       - name: Checkout independently pinned application source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 0ca9650c0a9b80af1d8ae1a8208f273da06a1785
+          ref: ${{ vars.FITZONE_APPROVED_CANDIDATE_SHA }}
           path: .pinned-candidate-source
           persist-credentials: false
 
@@ -600,7 +605,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C .pinned-candidate-source rev-parse HEAD)" = "0ca9650c0a9b80af1d8ae1a8208f273da06a1785"
+          [[ "$APPROVED_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C .pinned-candidate-source rev-parse HEAD)" = "$APPROVED_CANDIDATE_SHA"
           test "$(git -C .pinned-candidate-source rev-parse --show-object-format)" = "sha1"
           python3 - <<'PY'
           import hashlib

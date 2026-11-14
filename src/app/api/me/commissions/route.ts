@@ -1,3 +1,4 @@
+import { getOfferBoxCommissionTitle } from "@/lib/offer-box/commission-display";
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
@@ -11,6 +12,7 @@ type CommissionRow = {
   customerName: string;
   membershipName: string;
   source: string;
+  offerBoxPurchaseId?: string | null;
 };
 
 export async function GET() {
@@ -36,6 +38,14 @@ export async function GET() {
     db.staffCommission.findMany({
       where: { staffUserId: user.id },
       include: {
+        offerBoxPurchase: {
+          select: {
+            id: true,
+            offerSnapshot: true,
+            priceSnapshot: true,
+            user: { select: { name: true } },
+          },
+        },
         userMembership: {
           include: {
             user: { select: { name: true } },
@@ -135,9 +145,10 @@ export async function GET() {
         status: c.status,
         settledAt: c.settledAt?.toISOString?.() ?? null,
         createdAt: c.createdAt.toISOString(),
-        customerName: c.userMembership?.user?.name ?? "—",
-        membershipName: c.userMembership?.membership?.name ?? "—",
+        customerName: c.offerBoxPurchase?.user?.name ?? c.userMembership?.user?.name ?? "—",
+        membershipName: getOfferBoxCommissionTitle(c.offerBoxPurchase?.offerSnapshot) ?? c.userMembership?.membership?.name ?? "—",
         source,
+        offerBoxPurchaseId: c.offerBoxPurchaseId ?? null,
       });
     }
   };

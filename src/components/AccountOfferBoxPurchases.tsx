@@ -1,15 +1,48 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLang } from "@/lib/language";
-import { scheduleSlotInstant } from "@/lib/fitzone-time";
+import { cairoCalendarDateKey, scheduleSlotInstant } from "@/lib/fitzone-time";
 
 function useT() {
   const { lang } = useLang();
   return useCallback((ar: string, en: string) => (lang === "ar" ? ar : en), [lang]);
 }
 
+type AccountOfferBoxEntitlement = {
+  id: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  totalSessions: number | null;
+  reservedUnits: number;
+  attendedUnits: number;
+  missedUnits: number;
+  compensatedMissedUnits: number;
+  allocatedUnits: number;
+  unallocatedUnits: number | null;
+  bookings: Array<{
+    id: string;
+    status: string;
+    isMakeup: boolean;
+    compensated: boolean;
+    entitlementUnits: number;
+    scheduleId: string;
+    date: string;
+    time: string;
+    className: string;
+  }>;
+};
+
 type AccountOfferBoxPurchase = {
+  redemptionType?:
+    | "independent"
+    | "legacy_membership"
+    | "review_required"
+    | null;
+  entitlement?: AccountOfferBoxEntitlement | null;
   purchaseId: string;
+  commercialKind?: string;
+  holdExpiresAt?: string | null;
   status: string;
   canRedeem: boolean;
   title: string;
@@ -33,6 +66,32 @@ type AccountOfferBoxSchedule = {
   availableSpots: number;
 };
 
+function canBookMoreOfferClasses(
+  purchase: AccountOfferBoxPurchase,
+): boolean {
+  const entitlement = purchase.entitlement;
+
+  if (
+    purchase.redemptionType !== "independent" ||
+    !entitlement ||
+    entitlement.status !== "active" ||
+    purchase.allowedClassIds.length === 0 ||
+    (
+      entitlement.unallocatedUnits !== null &&
+      entitlement.unallocatedUnits < 1
+    )
+  ) {
+    return false;
+  }
+
+  const today = cairoCalendarDateKey(new Date());
+
+  return (
+    today >= cairoCalendarDateKey(new Date(entitlement.startDate)) &&
+    today <= cairoCalendarDateKey(new Date(entitlement.endDate))
+  );
+}
+
 function AccountOfferBoxRedeemPicker({
   purchase,
   onClose,
@@ -52,12 +111,18 @@ function AccountOfferBoxRedeemPicker({
   const [error, setError] = useState("");
   const submittingRef = useRef(false);
 
-  const maxSelections = Math.min(
-    20,
-    purchase.sessionsCount != null && purchase.sessionsCount > 0
-      ? purchase.sessionsCount
-      : 20,
-  );
+  const additionalBooking =
+    purchase.redemptionType === "independent" &&
+    purchase.entitlement != null;
+
+  const maxSelections = additionalBooking
+    ? 1
+    : Math.min(
+        20,
+        purchase.sessionsCount != null && purchase.sessionsCount > 0
+          ? purchase.sessionsCount
+          : 20,
+      );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -150,6 +215,32 @@ function AccountOfferBoxRedeemPicker({
             if (!Number.isFinite(startsAt.getTime())) continue;
             if (startsAt.getTime() <= Date.now()) continue;
 
+            if (additionalBooking && purchase.entitlement) {
+              const day = cairoCalendarDateKey(startsAt);
+
+              if (
+                day < cairoCalendarDateKey(
+                  new Date(purchase.entitlement.startDate),
+                ) ||
+                day > cairoCalendarDateKey(
+                  new Date(purchase.entitlement.endDate),
+                )
+              ) {
+                continue;
+              }
+
+              const alreadyBooked =
+                purchase.entitlement.bookings.some(
+                  (booking) =>
+                    booking.scheduleId === slot.id &&
+                    ["confirmed", "attended", "noshow"].includes(
+                      booking.status,
+                    ),
+                );
+
+              if (alreadyBooked) continue;
+            }
+
             const availableSpots = Number(slot.availableSpots);
             if (!Number.isFinite(availableSpots) || availableSpots <= 0) {
               continue;
@@ -194,7 +285,14 @@ function AccountOfferBoxRedeemPicker({
     void load();
 
     return () => controller.abort();
-  }, [purchase.purchaseId, purchase.allowedClassIds, lang, t]);
+  }, [
+    purchase.purchaseId,
+    purchase.allowedClassIds,
+    purchase.entitlement,
+    additionalBooking,
+    lang,
+    t,
+  ]);
 
   const toggleSlot = (slot: AccountOfferBoxSchedule) => {
     if (submittingRef.current) return;
@@ -242,7 +340,11 @@ function AccountOfferBoxRedeemPicker({
     if (
       submittingRef.current ||
       selectedIds.length === 0 ||
-      !purchase.canRedeem
+      (
+        additionalBooking
+          ? !canBookMoreOfferClasses(purchase)
+          : !purchase.canRedeem
+      )
     ) {
       return;
     }
@@ -250,8 +352,12 @@ function AccountOfferBoxRedeemPicker({
     if (
       !window.confirm(
         t(
-          "هل تؤكدين اختيار هذه الحصص وتفعيل العرض الآن؟",
-          "Confirm these classes and activate your offer now?",
+          additionalBooking
+            ? "هل تؤكدين حجز هذه الحصة من العرض؟"
+            : "هل تؤكدين اختيار هذه الحصص وتفعيل العرض الآن؟",
+          additionalBooking
+            ? "Confirm this class using your offer?"
+            : "Confirm these classes and activate your offer now?",
         ),
       )
     ) {
@@ -263,18 +369,31 @@ function AccountOfferBoxRedeemPicker({
     setError("");
 
     try {
-      const response = await fetch("/api/offer-box/redeem", {
+      const response = await fetch(
+        additionalBooking
+          ? "/api/bookings"
+          : "/api/offer-box/redeem",
+        {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          purchaseId: purchase.purchaseId,
-          scheduleIds: selectedIds,
-        }),
-      });
+        body: JSON.stringify(
+          additionalBooking
+            ? {
+                scheduleId: selectedIds[0],
+                offerBoxEntitlementId: purchase.entitlement!.id,
+              }
+            : {
+                purchaseId: purchase.purchaseId,
+                scheduleIds: selectedIds,
+                confirmed: true,
+              },
+        ),
+        },
+      );
 
       const result = (await response.json()) as {
         error?: string;
@@ -437,7 +556,9 @@ function AccountOfferBoxRedeemPicker({
       >
         {submitting
           ? t("جاري تأكيد الحصص...", "Confirming classes...")
-          : t("تأكيد الحصص وتفعيل العرض", "Confirm and activate offer")}
+          : additionalBooking
+            ? t("تأكيد حجز الحصة", "Confirm class booking")
+            : t("تأكيد الحصص وتفعيل العرض", "Confirm and activate offer")}
       </button>
     </section>
   );
@@ -612,7 +733,7 @@ export default function AccountOfferBoxPurchases() {
 
             {item.durationDays != null && (
               <p style={{ marginBottom: 8 }}>
-                {t("مدة الاشتراك عند التفعيل", "Duration after activation")}:
+                {t("مدة العرض عند التفعيل", "Duration after activation")}:
                 {" "}{item.durationDays} {t("يوم", "days")}
               </p>
             )}
@@ -624,10 +745,213 @@ export default function AccountOfferBoxPurchases() {
                 marginTop: 12,
               }}
             >
-              {item.canRedeem
-                ? t("مدفوع — متاح لاختيار الحصص", "Paid — ready to redeem")
-                : t("تم استرداد العرض", "Offer redeemed")}
+              {item.status === "pending_payment"
+                ? t("قيد الدفع", "Payment pending")
+                : item.status === "paid_activation_pending"
+                  ? t("مدفوع — جاري التفعيل", "Paid — activation pending")
+                  : item.status === "paid_review"
+                    ? t("مدفوع — يحتاج مراجعة", "Paid — review required")
+                    : item.canRedeem
+                      ? t("مدفوع — متاح لاختيار الحصص", "Paid — ready to redeem")
+                      : t("تم التفعيل", "Activated")}
             </p>
+
+            {(
+              item.canRedeem ||
+              (
+                item.status === "redeemed" &&
+                item.entitlement != null
+              )
+            ) &&
+              item.redemptionType !== "review_required" && (
+                <a
+                  href={`/api/offer-box/purchases/${encodeURIComponent(item.purchaseId)}/receipt`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginTop: 8,
+                    marginBottom: 8,
+                    padding: "8px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #d9a8c1",
+                    color: "#9b245f",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    textDecoration: "none",
+                  }}
+                >
+                  {t("إيصال الدفع", "Payment receipt")}
+                </a>
+              )}
+
+            {item.redemptionType === "review_required" && (
+              <p
+                role="alert"
+                style={{ color: "#991B1B", marginTop: 12 }}
+              >
+                {t(
+                  "يحتاج هذا العرض إلى مراجعة بياناته. يرجى التواصل مع الإدارة.",
+                  "This offer requires an entitlement review. Please contact support.",
+                )}
+              </p>
+            )}
+
+            {item.entitlement && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: "#F8FAFC",
+                }}
+              >
+                <strong>
+                  {item.entitlement.status === "pending_payment"
+                    ? t("حصص محجوزة مؤقتًا", "Temporarily reserved classes")
+                    : t("الحق المستقل", "Independent entitlement")}
+                </strong>
+
+                <p style={{ marginTop: 8 }}>
+                  {t("تاريخ التفعيل", "Activation date")}:{" "}
+                  {new Date(item.entitlement.startDate)
+                    .toLocaleDateString(
+                      lang === "ar" ? "ar-EG" : "en-US",
+                      { timeZone: "Africa/Cairo" },
+                    )}
+                </p>
+
+                <p>
+                  {t("ينتهي في", "Valid until")}:{" "}
+                  {new Date(item.entitlement.endDate)
+                    .toLocaleDateString(
+                      lang === "ar" ? "ar-EG" : "en-US",
+                      { timeZone: "Africa/Cairo" },
+                    )}
+                </p>
+
+                <p>
+                  {t("الحالة", "Status")}:{" "}
+                  {item.entitlement.status === "active" &&
+                  cairoCalendarDateKey(new Date()) >=
+                    cairoCalendarDateKey(new Date(item.entitlement.startDate)) &&
+                  cairoCalendarDateKey(new Date()) <=
+                    cairoCalendarDateKey(new Date(item.entitlement.endDate))
+                    ? t("ساري", "Active")
+                    : t("غير ساري حاليًا", "Not currently active")}
+                </p>
+
+                <div style={{ marginTop: 10 }}>
+                  <p>
+                    {t("إجمالي الحصص", "Total sessions")}:{" "}
+                    {item.entitlement.totalSessions ??
+                      t("غير محدد", "Not limited")}
+                  </p>
+
+                  <p>
+                    {t("الحصص المحجوزة", "Reserved sessions")}:{" "}
+                    {item.entitlement.reservedUnits}
+                  </p>
+
+                  <p>
+                    {t("الحصص التي تم حضورها", "Attended sessions")}:{" "}
+                    {item.entitlement.attendedUnits}
+                  </p>
+
+                  <p>
+                    {t("الحصص الفائتة", "Missed sessions")}:{" "}
+                    {item.entitlement.missedUnits}
+                  </p>
+                  {item.entitlement.compensatedMissedUnits > 0 && (
+                    <p>
+                      {t("الحصص التي تم تعويضها", "Compensated sessions")}:{" "}
+                      {item.entitlement.compensatedMissedUnits}
+                    </p>
+                  )}
+
+                  {item.entitlement.unallocatedUnits !== null && (
+                    <p>
+                      {t(
+                        "الحصص غير المخصصة لحجوزات",
+                        "Unallocated sessions",
+                      )}:{" "}
+                      {item.entitlement.unallocatedUnits}
+                    </p>
+                  )}
+                </div>
+
+                {item.entitlement.bookings.length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <h4 style={{ fontWeight: 700 }}>
+                      {t("مواعيد العرض", "Offer bookings")}
+                    </h4>
+
+                    {item.entitlement.bookings.map((booking) => (
+                      <div
+                        key={booking.id}
+                        style={{
+                          padding: "8px 0",
+                          borderBottom: "1px solid #E2E8F0",
+                        }}
+                      >
+                        <strong>{booking.className}</strong>
+
+                        <div>
+                          {new Date(booking.date)
+                            .toLocaleDateString(
+                              lang === "ar" ? "ar-EG" : "en-US",
+                              { timeZone: "Africa/Cairo" },
+                            )}{" "}
+                          — {booking.time}
+                        </div>
+
+                        <small>
+                          {booking.status === "pending_payment"
+                            ? t("قيد الدفع", "Payment pending")
+                            : booking.status === "confirmed"
+                            ? t("مؤكد", "Confirmed")
+                            : booking.status === "attended"
+                              ? t("تم الحضور", "Attended")
+                              : booking.status === "noshow"
+                                ? t("لم يتم الحضور", "Missed")
+                                : booking.status === "cancelled"
+                                  ? t("ملغى", "Cancelled")
+                                  : booking.status}
+
+                          {booking.isMakeup
+                            ? t(" — تعويضية", " — Makeup")
+                            : ""}
+                          {booking.compensated
+                            ? t(" — تم التعويض", " — Compensated")
+                            : ""}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canBookMoreOfferClasses(item) && (
+              <button
+                type="button"
+                onClick={() => setSelectedPurchase(item)}
+                style={{
+                  marginTop: 12,
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "#DB2777",
+                  color: "#FFFFFF",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {t("حجز حصة من العرض", "Book a class from this offer")}
+              </button>
+            )}
 
             {item.canRedeem && (
               <>

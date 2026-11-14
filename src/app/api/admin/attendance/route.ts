@@ -208,7 +208,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "هذا الكود غير متاح للحضور." }, { status: 404 });
   }
 
-  if (pass.userMembership) {
+  if (
+    (pass.offerBoxEntitlementId || pass.friendOfferEntitlementId) &&
+    (
+      pass.userMembershipId ||
+      pass.privateSessionApplicationId ||
+      (pass.offerBoxEntitlementId ? pass.kind !== "offer_box" : pass.kind !== "friend_offer") ||
+      pass.status !== "active"
+    )
+  ) {
+    return NextResponse.json(
+      { error: "هذا الكود غير متاح للحضور." },
+      { status: 400 },
+    );
+  }
+
+  if (pass.userMembership || pass.offerBoxEntitlementId || pass.friendOfferEntitlementId) {
     if (mode !== "class") {
       return NextResponse.json(
         { error: "هذا الكود خاص بحضور الكلاسات فقط." },
@@ -231,7 +246,23 @@ export async function POST(req: Request) {
     const booking = await db.booking.findFirst({
       where: {
         userId: pass.userId,
-        userMembershipId: pass.userMembership.id,
+        ...(pass.friendOfferEntitlementId
+          ? {
+              friendOfferEntitlementId: pass.friendOfferEntitlementId,
+              offerBoxEntitlementId: null,
+              userMembershipId: null,
+            }
+          : pass.offerBoxEntitlementId
+            ? {
+                offerBoxEntitlementId: pass.offerBoxEntitlementId,
+                friendOfferEntitlementId: null,
+                userMembershipId: null,
+              }
+            : {
+                userMembershipId: pass.userMembership!.id,
+                offerBoxEntitlementId: null,
+                friendOfferEntitlementId: null,
+              }),
         scheduleId: body.scheduleId,
         status: { in: ["confirmed", "attended"] },
       },
@@ -251,6 +282,7 @@ export async function POST(req: Request) {
       bookingId: booking.id,
       scannedByUserId: guard.session.id,
       source: attendanceSource,
+      scannedPassId: pass.id,
     });
 
     if (!attendanceResult.ok) {

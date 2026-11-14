@@ -10,6 +10,8 @@ import {
 const mocks = vi.hoisted(() => ({
   orderFindMany: vi.fn(),
   orderFindUnique: vi.fn(),
+  paymentCount: vi.fn(),
+  paymentFindMany: vi.fn(),
   updatePaymentStatus: vi.fn(),
 }));
 
@@ -18,6 +20,11 @@ vi.mock("@/lib/db", () => ({
     order: {
       findMany: mocks.orderFindMany,
       findUnique: mocks.orderFindUnique,
+    },
+    // STORE_CRON_OFFER_BOX_MOCK_V1
+    paymentTransaction: {
+      count: mocks.paymentCount,
+      findMany: mocks.paymentFindMany,
     },
   },
 }));
@@ -84,6 +91,12 @@ describe(
       mocks.orderFindMany.mockReset();
       mocks.orderFindUnique.mockReset();
       mocks.updatePaymentStatus.mockReset();
+
+      // No expired Offer Box payments in Store-only fixtures.
+      mocks.paymentCount.mockReset();
+      mocks.paymentFindMany.mockReset();
+      mocks.paymentCount.mockResolvedValue(0);
+      mocks.paymentFindMany.mockResolvedValue([]);
     });
 
     afterEach(() => {

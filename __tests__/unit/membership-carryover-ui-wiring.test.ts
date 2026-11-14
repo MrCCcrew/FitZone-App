@@ -93,8 +93,8 @@ describe(
           "carryoverPreview.expectedTotalSessions",
         );
 
-        expect(source).toContain(
-          "disabled={carryoverPreview?.blocking === true}",
+        expect(source).toMatch(
+          /disabled=\{\s*carryoverPreview\?\.blocking === true\s*\|\|\s*\(checkoutPreview\.scheduleIds\.length > 0 &&\s*!checkoutScheduleDetailsMatch\(checkoutPreview\.scheduleIds, checkoutPreviewScheduleDetails\)\s*\)\s*\}/,
         );
       },
     );
@@ -119,13 +119,23 @@ describe(
           "if (carryover.blocking)",
           previewIndex,
         );
+        const transactionDeclarationIndex = route.indexOf(
+          "let transaction: Awaited<",
+          blockingIndex,
+        );
         const paymentIndex = route.indexOf(
-          "const transaction = await createPaymentTransaction({",
+          "transaction = await createPaymentTransaction({",
+          blockingIndex,
         );
 
         expect(previewIndex).toBeGreaterThanOrEqual(0);
         expect(blockingIndex).toBeGreaterThan(previewIndex);
-        expect(paymentIndex).toBeGreaterThan(blockingIndex);
+        expect(transactionDeclarationIndex).toBeGreaterThan(
+          blockingIndex,
+        );
+        expect(paymentIndex).toBeGreaterThan(
+          transactionDeclarationIndex,
+        );
 
         expect(publicUi).toContain(
           "/api/friend-offers/checkout?token=",
