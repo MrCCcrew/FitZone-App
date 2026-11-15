@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveIndependentDirectOfferTerms } from "@/lib/offer-box/direct-offer-terms";
 import { db } from "@/lib/db";
 import { calculateOfferBoxFinalPrice } from "@/lib/payments/offer-box-pricing";
 
@@ -97,31 +98,60 @@ export async function GET() {
     const offers = rows.flatMap((row) => {
       const offer = row.offer;
 
-      // Inactive memberships must not be advertised as
-      // directly purchasable subscriptions.
-      // Do not advertise sold-out or disabled friends offers.
+      // Classification uses ACTIVE commercial capabilities.
+      // A historical, disabled friend config must not turn an
+      // individual offer into a friends-only purchase.
+      const friendsActive = offer.friendOfferConfig?.isActive === true;
+      const boxActive = offer.offerBoxEnabled === true;
+
+      // Conflicting active purchase modes must not be advertised.
+      if (friendsActive && boxActive) return [];
+
       if (
-        (offer.maxSubscribers !== null &&
-          offer.currentSubscribers >= offer.maxSubscribers) ||
-        (offer.friendOfferConfig && !offer.friendOfferConfig.isActive)
+        offer.maxSubscribers !== null &&
+        offer.currentSubscribers >= offer.maxSubscribers
       ) {
         return [];
       }
-      const isIndependentCommercialOffer =
-        offer.offerBoxEnabled || Boolean(offer.friendOfferConfig);
 
+      const kind = friendsActive
+        ? "friend_offer"
+        : boxActive
+          ? "offer_box"
+          : offer.type === "special"
+            ? "direct_offer"
+            : "membership_offer";
+
+      // Use the same independent commercial terms contract.
+      // Display remains non-authoritative; checkout must revalidate.
+      if (kind === "direct_offer") {
+        try {
+          resolveIndependentDirectOfferTerms({
+            id: offer.id,
+            isActive: true,
+            type: offer.type,
+            offerBoxEnabled: offer.offerBoxEnabled,
+            friendOfferConfig: offer.friendOfferConfig,
+            expiresAt: offer.expiresAt,
+            specialPrice: offer.specialPrice,
+            priceBefore: offer.priceBefore,
+            durationDays: offer.durationDays,
+            sessionsCount: offer.sessionsCount,
+            currentSubscribers: offer.currentSubscribers,
+            maxSubscribers: offer.maxSubscribers,
+          }, now);
+        } catch {
+          return [];
+        }
+      }
+
+      // Only actual membership offers depend on active Membership.
       if (
-        !isIndependentCommercialOffer &&
+        kind === "membership_offer" &&
         (!offer.membershipId || !offer.membership?.isActive)
       ) {
         return [];
       }
-
-      const kind = offer.friendOfferConfig
-        ? "friend_offer"
-        : offer.offerBoxEnabled
-          ? "offer_box"
-          : "membership_offer";
 
       // Display-only snapshot. Checkout remains the payment authority.
       // Offer Box must use exactly the same pricing helper and inputs.

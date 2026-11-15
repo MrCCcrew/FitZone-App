@@ -5114,41 +5114,19 @@ const HomePage = ({
 
       if (!selected?.offerId) return;
 
-      if (selected.kind === "friend_offer") {
-        window.sessionStorage.setItem(
-          "fitzone_friend_offer_pending",
-          JSON.stringify({
-            kind: "open",
-            offerId: selected.offerId,
-          }),
-        );
-        navigate("offers");
-        return;
-      }
+      // Popup is display-only. The Offers page owns checkout routing.
+      window.sessionStorage.setItem(
+        "fitzone_popup_selected_offer_v1",
+        JSON.stringify({
+          offerId: selected.offerId,
+          createdAt: Date.now(),
+        }),
+      );
 
-      if (selected.kind === "offer_box") {
-        const url = new URL(window.location.href);
-        url.searchParams.set("offerBox", selected.offerId);
-        window.history.replaceState(
-          window.history.state,
-          "",
-          url.toString(),
-        );
-        navigate("offers");
-        return;
-      }
-
-      if (
-        selected.kind === "membership_offer" &&
-        selected.membershipId
-      ) {
-        startMembershipFlow(
-          selected.membershipId,
-          "offer",
-          selected.offerId,
-          selected.pricingSource.specialPrice,
-        );
-      }
+      navigate("offers");
+      window.dispatchEvent(
+        new Event("fitzone-popup-offer-pending"),
+      );
     };
 
     window.addEventListener(
@@ -16634,6 +16612,126 @@ const OffersPage = ({
   const { lang } = useLang();
   const [offers, setOffers] = useState(DEFAULT_OFFERS);
   useEffect(() => {
+    const key = "fitzone_popup_selected_offer_v1";
+    let timer: number | null = null;
+    let checks = 0;
+
+    const stop = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const resolvePopupOfferSelection = (): boolean => {
+      const raw = window.sessionStorage.getItem(key);
+      if (!raw) return true;
+
+      let pending: { offerId?: string; createdAt?: number };
+
+      try {
+        pending = JSON.parse(raw);
+      } catch {
+        window.sessionStorage.removeItem(key);
+        return true;
+      }
+
+      const now = Date.now();
+      if (
+        typeof pending.offerId !== "string" ||
+        !pending.offerId ||
+        typeof pending.createdAt !== "number" ||
+        pending.createdAt > now ||
+        now - pending.createdAt > 15000
+      ) {
+        window.sessionStorage.removeItem(key);
+        return true;
+      }
+
+      // Wait until the existing Offers page is selected.
+      const currentPage = new URLSearchParams(
+        window.location.search,
+      ).get("page");
+
+      if (currentPage !== "offers") return false;
+
+      const offer = offers.find(
+        (item) => item.id === pending.offerId,
+      );
+
+      if (!offer) return false;
+
+      const attribute =
+        offer.offerBoxEnabled && !offer.friendOfferEnabled
+          ? "data-popup-offer-box-id"
+          : "data-popup-original-offer-id";
+
+      const matches = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          `button[${attribute}]`,
+        ),
+      ).filter(
+        (button) =>
+          button.getAttribute(attribute) === offer.id,
+      );
+
+      // No fallback to another offer or another purchase button.
+      if (matches.length !== 1) return false;
+
+      const target = matches[0];
+
+      // Consume the selection before invoking the original CTA.
+      window.sessionStorage.removeItem(key);
+
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      if (!target.disabled) {
+        target.click();
+      }
+
+      return true;
+    };
+
+    const run = () => {
+      if (resolvePopupOfferSelection()) {
+        stop();
+        return;
+      }
+
+      if (timer !== null) return;
+
+      checks = 0;
+      timer = window.setInterval(() => {
+        checks += 1;
+
+        if (resolvePopupOfferSelection()) {
+          stop();
+        } else if (checks >= 100) {
+          stop();
+          window.sessionStorage.removeItem(key);
+        }
+      }, 100);
+    };
+
+    window.addEventListener(
+      "fitzone-popup-offer-pending",
+      run,
+    );
+
+    run();
+
+    return () => {
+      window.removeEventListener(
+        "fitzone-popup-offer-pending",
+        run,
+      );
+      stop();
+    };
+  }, [offers]);
+  useEffect(() => {
     if (offers.length === 0) return;
 
     const requestedOfferId =
@@ -18366,6 +18464,7 @@ ${friendInviteUrl(link.token)}`,
                       </span>
                     </div>
                     <button
+                      data-popup-original-offer-id={o.id}
                       onClick={() => {
                         trackBusinessView("offer_viewed", o.id);
 
@@ -18403,6 +18502,7 @@ ${friendInviteUrl(link.token)}`,
           <button
             type="button"
             data-offer-box-id={o.id}
+          data-popup-offer-box-id={o.id}
             onClick={() => {
               trackBusinessView("offer_viewed", o.id);
               void purchaseOfferBox(o);

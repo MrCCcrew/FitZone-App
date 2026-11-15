@@ -205,6 +205,91 @@ describe("R43 - Eligibility regression", () => {
     expect(body.offers).toEqual([]);
   });
 
+  it("R768 - individual Pink Friday ignores inactive historical friends configuration", async () => {
+    mocks.popupFindMany.mockResolvedValue([
+      makeRow("pink_444", {
+        type: "special",
+        offerBoxEnabled: false,
+        membershipId: null,
+        membership: null,
+        specialPrice: 444,
+        durationDays: 60,
+        sessionsCount: 16,
+        friendOfferConfig: { id: "old_friend_444", isActive: false },
+      }),
+      makeRow("pink_666", {
+        type: "special",
+        offerBoxEnabled: false,
+        membershipId: "inactive_catalog",
+        membership: { id: "inactive_catalog", isActive: false },
+        specialPrice: 666,
+        durationDays: 180,
+        sessionsCount: 36,
+        friendOfferConfig: { id: "old_friend_666", isActive: false },
+      }),
+    ]);
+
+    const response = await publicGET();
+    const body = await response.json();
+
+    expect(body.enabled).toBe(true);
+    expect(body.offers).toHaveLength(2);
+    expect(body.offers.map((o: { kind: string }) => o.kind))
+      .toEqual(["direct_offer", "direct_offer"]);
+    expect(body.offers.map((o: { pricingSource: { specialPrice: number } }) =>
+      o.pricingSource.specialPrice)).toEqual([444, 666]);
+  });
+
+  it("R768 - active friends configuration remains friends-only", async () => {
+    mocks.popupFindMany.mockResolvedValue([
+      makeRow("friends", {
+        type: "special",
+        offerBoxEnabled: false,
+        specialPrice: 444,
+        durationDays: 60,
+        sessionsCount: 16,
+        friendOfferConfig: { id: "active_friends", isActive: true },
+      }),
+    ]);
+
+    const body = await (await publicGET()).json();
+    expect(body.enabled).toBe(true);
+    expect(body.offers[0].kind).toBe("friend_offer");
+  });
+
+  it("R768 - conflicting active friends and Offer Box modes fail closed", async () => {
+    mocks.popupFindMany.mockResolvedValue([
+      makeRow("conflict", {
+        type: "special",
+        offerBoxEnabled: true,
+        specialPrice: 444,
+        durationDays: 60,
+        sessionsCount: 16,
+        friendOfferConfig: { id: "active_friends", isActive: true },
+      }),
+    ]);
+
+    const body = await (await publicGET()).json();
+    expect(body.enabled).toBe(false);
+    expect(body.reason).toBe("no_active_offers");
+  });
+
+  it("R768 - incomplete individual terms fail closed", async () => {
+    mocks.popupFindMany.mockResolvedValue([
+      makeRow("invalid_direct", {
+        type: "special",
+        offerBoxEnabled: false,
+        specialPrice: 444,
+        durationDays: 60,
+        sessionsCount: null,
+        friendOfferConfig: null,
+      }),
+    ]);
+
+    const body = await (await publicGET()).json();
+    expect(body.enabled).toBe(false);
+    expect(body.offers).toEqual([]);
+  });
   it("allows an independent Offer Box without membership", async () => {
     mocks.popupFindMany.mockResolvedValue([
       makeRow("independent_box", {

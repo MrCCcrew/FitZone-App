@@ -11,7 +11,7 @@ export type PinkFridayOffer = {
   titleEn: string | null;
   imageUrl: string | null;
   badge: string | null;
-  kind: "friend_offer" | "offer_box" | "membership_offer";
+  kind: "friend_offer" | "offer_box" | "direct_offer" | "membership_offer";
   pricingSource: {
     specialPrice: number | null;
     finalPrice?: number | null;
