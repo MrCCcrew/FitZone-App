@@ -16,7 +16,7 @@ async function checkAdmin() {
 }
 
 function fmtOrder(o: {
-  id: string; userId: string; businessUnit: string;
+  id: string; userId: string | null; businessUnit: string;
   subtotal: number; discountTotal: number; shippingFee: number; total: number;
   status: string; paymentMethod: string; notes: string | null; adminNotes: string | null;
   recipientName: string | null; recipientPhone: string | null;
@@ -25,7 +25,7 @@ function fmtOrder(o: {
   deliveryCompanyId: string | null; trackingNumber: string | null;
   inventoryDeducted: boolean; cancelledAt: Date | null; deliveredAt: Date | null;
   createdAt: Date; updatedAt: Date;
-  user: { id: string; name: string | null; email: string | null; phone: string | null };
+  user: { id: string; name: string | null; email: string | null; phone: string | null } | null;
   items: {
     id: string; quantity: number; price: number; costPrice: number | null;
     vatAmount: number; size: string | null; color: string | null;

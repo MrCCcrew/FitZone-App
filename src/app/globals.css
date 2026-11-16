@@ -357,3 +357,98 @@
   0%,100% { transform: translate3d(0,0,0); }
   50%      { transform: translate3d(12px,-16px,0); }
 }
+
+/* FITZONE R19 WEEKLY BOOKINGS
+   Scoped to the account weekly schedule only.
+   Preserve existing public and reschedule layouts.
+*/
+.account-weekly-schedule .schedule-outer {
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  overflow: hidden;
+  --schedule-day-col: 90px;
+}
+
+.account-weekly-schedule .schedule-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: min(520px,65dvh);
+}
+
+.account-weekly-schedule .schedule-table {
+  display: table;
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  background: #0d0a0c;
+  table-layout: auto;
+}
+
+.account-weekly-schedule .schedule-table thead {
+  display: table-header-group;
+}
+
+.account-weekly-schedule .schedule-table tbody {
+  display: table-row-group;
+}
+
+.account-weekly-schedule .schedule-table tr {
+  display: table-row;
+}
+
+.account-weekly-schedule .schedule-table th,
+.account-weekly-schedule .schedule-table td {
+  display: table-cell;
+  vertical-align: middle;
+  min-height: 0;
+  padding: 10px 8px;
+  border: 1px solid rgba(255,255,255,.08);
+  text-align: center;
+}
+
+.account-weekly-schedule .schedule-table .schedule-cell.time {
+  min-width: 130px;
+  background: #1d1619;
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.account-weekly-schedule .schedule-table .schedule-cell.day {
+  position: sticky;
+  right: 0;
+  min-width: var(--schedule-day-col);
+  width: var(--schedule-day-col);
+  background: #1d1619;
+  z-index: 3;
+}
+
+.account-weekly-schedule .schedule-table .schedule-cell.day-head {
+  position: sticky;
+  top: 0;
+  right: 0;
+  min-width: var(--schedule-day-col);
+  background: #161214;
+  z-index: 7;
+}
+
+.account-weekly-schedule .schedule-slot-item {
+  cursor: default;
+  min-height: 62px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 767px) {
+  .account-weekly-schedule.schedule-shell {
+    padding: 18px 12px;
+  }
+
+  .account-weekly-schedule .schedule-table {
+    min-width: 680px;
+  }
+
+  .account-weekly-schedule .schedule-outer {
+    --schedule-day-col: 78px;
+  }
+}

@@ -116,6 +116,10 @@ export async function markFriendOfferParticipantPaid(
         throw new Error("FRIEND_OFFER_EARLY_PAID_PROOF_INVALID");
       }
 
+      if (!payment.userId || payment.userId !== participant.userId) {
+        throw new Error("FRIEND_OFFER_PAYMENT_OWNER_MISMATCH");
+      }
+
       const repaired = await tx.friendOfferParticipant.updateMany({
         where: {
           id: participant.id,

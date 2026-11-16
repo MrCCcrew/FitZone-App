@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { allocateWalletDeductionBySource } from "@/lib/referral-credit-policy";
@@ -309,6 +309,28 @@ export async function POST(req: Request) {
         },
       });
     } catch (error) {
+      /*
+       * R19_PAYMENT_UNCERTAINTY_GUARD_V1
+       *
+       * A local payment may be committed even when Paymob's
+       * checkout response is missing. Never restore a wallet
+       * or points against a payment requiring reconciliation.
+       */
+      const committedPayment = await db.paymentTransaction.findFirst({
+        where: { orderId: order.id },
+        select: { id: true },
+      });
+
+      if (committedPayment) {
+        console.error("[ORDER_INTENT_PAYMENT_RECONCILIATION_REQUIRED]", {
+          orderId: order.id,
+          paymentTransactionId: committedPayment.id,
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+
+        throw new Error("PAYMENT_RECONCILIATION_REQUIRED");
+      }
+
       await restorePaymentBalanceAdjustments({
         userId: currentUser.id,
         walletAmount: validatedWalletDeduct,

@@ -1,4 +1,5 @@
 "use client";
+import BodyMeasurementsPanel from "@/components/body-measurements/BodyMeasurementsPanel";
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { buildFriendOfferAccountCheckoutPayload } from "@/lib/friend-offer-account-checkout";
@@ -2281,13 +2282,220 @@ function BookingsTabLegacy({ bookings }: { bookings: AccountData["bookings"] }) 
 }
 
 // ─── Tab: Orders ──────────────────────────────────────────────────────────────
+function WeeklyBookingsSchedule({
+  bookings,
+}: {
+  bookings: AccountData["bookings"];
+}) {
+  const { lang } = useLang();
+  const t = (arText: string, enText: string) =>
+    lang === "ar" ? arText : enText;
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  // Booking dates are Cairo calendar dates stored at UTC midnight.
+  // Keep calendar arithmetic in UTC to avoid browser timezone shifts.
+  const cairoParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Cairo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const part = (type: string) =>
+    cairoParts.find((item) => item.type === type)?.value ?? "";
+
+  const todayKey = `${part("year")}-${part("month")}-${part("day")}`;
+  const today = new Date(`${todayKey}T00:00:00.000Z`);
+  const start = new Date(today);
+
+  // Egyptian weekly schedule: Saturday through Friday.
+  start.setUTCDate(
+    start.getUTCDate() - ((start.getUTCDay() + 1) % 7) + weekOffset * 7,
+  );
+
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return {
+      key: date.toISOString().slice(0, 10),
+      date,
+    };
+  });
+
+  const weekEnd = days[6].date;
+  const firstKey = days[0].key;
+  const lastKey = days[6].key;
+
+  const visible = bookings.filter((booking) => {
+    const dateKey = booking.date.slice(0, 10);
+    return (
+      ["confirmed", "attended", "noshow"].includes(booking.status) &&
+      dateKey >= firstKey &&
+      dateKey <= lastKey
+    );
+  });
+
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+
+  const dayLabel = (date: Date) =>
+    date.toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB", {
+      timeZone: "UTC",
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+    });
+
+  const sections = [
+    { key: "morning", ar: "الجدول الصباحي", en: "Morning schedule" },
+    { key: "evening", ar: "الجدول المسائي", en: "Evening schedule" },
+  ] as const;
+
+  return (
+    <div className="schedule-shell account-weekly-schedule space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-black text-white">
+            {t("جدولي الأسبوعي", "My weekly schedule")}
+          </h3>
+          <p className="mt-1 text-sm text-amber-200">
+            {formatDate(start)} - {formatDate(weekEnd)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button"
+            onClick={() => setWeekOffset((value) => value - 1)}
+            className="rounded-xl bg-gray-800 px-3 py-2 text-sm font-bold text-white hover:bg-gray-700">
+            {t("الأسبوع السابق", "Previous week")}
+          </button>
+          <button type="button"
+            onClick={() => setWeekOffset(0)}
+            className="rounded-xl bg-amber-500/15 px-3 py-2 text-sm font-bold text-amber-200 hover:bg-amber-500/25">
+            {t("الأسبوع الحالي", "This week")}
+          </button>
+          <button type="button"
+            onClick={() => setWeekOffset((value) => value + 1)}
+            className="rounded-xl bg-gray-800 px-3 py-2 text-sm font-bold text-white hover:bg-gray-700">
+            {t("الأسبوع التالي", "Next week")}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-300">
+        {t(
+          "يظهر هنا فقط جدول حجوزاتك الفعلية. طلب تغيير الموعد لا يغيّر حجزك إلا بعد موافقة الإدارة.",
+          "Only your actual bookings appear here. A reschedule request does not change your booking until approved.",
+        )}
+      </p>
+
+      {visible.length === 0 && (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center text-sm text-gray-300">
+          {t("لا توجد حصص محجوزة في هذا الأسبوع.", "No booked classes this week.")}
+        </div>
+      )}
+
+      {sections.map((section) => {
+        const group = visible.filter((booking) => {
+          const hour = Number(booking.time.split(":")[0]);
+          return section.key === "morning" ? hour < 12 : hour >= 12;
+        });
+        if (group.length === 0) return null;
+
+        const times = [...new Set(group.map((booking) => booking.time))]
+          .sort((a, b) => a.localeCompare(b));
+
+        return (
+          <div key={section.key} className="schedule-block">
+            <div className="schedule-block-title">
+              {t(section.ar, section.en)}
+            </div>
+            <div className="schedule-outer">
+              <div className="schedule-scroll" dir="rtl">
+                <table className="schedule-table">
+                  <thead>
+                    <tr>
+                      <th className="schedule-cell day-head">
+                        {t("اليوم", "Day")}
+                      </th>
+                      {times.map((time) => (
+                        <th key={time} className="schedule-cell time">
+                          {time}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {days.map((day) => (
+                      <tr key={day.key}>
+                        <th scope="row" className="schedule-cell day">
+                          {dayLabel(day.date)}
+                        </th>
+                        {times.map((time) => {
+                          const matches = group.filter(
+                            (booking) =>
+                              booking.date.slice(0, 10) === day.key &&
+                              booking.time === time,
+                          );
+                          return (
+                            <td key={`${day.key}-${time}`} className="schedule-cell">
+                              {matches.map((booking) => (
+                                <div
+                                  key={booking.id}
+                                  className="schedule-slot-item mb-2 rounded-xl border border-amber-400/20 bg-amber-400/10 p-2 text-center"
+                                >
+                                  <div className="text-sm font-black text-white">
+                                    {booking.className}
+                                  </div>
+                                  <div className="mt-1 text-xs text-amber-200">
+                                    {booking.trainerName}
+                                  </div>
+                                  <div className="mt-1 text-xs text-gray-300">
+                                    {booking.time}
+                                  </div>
+                                  {booking.status === "attended" && (
+                                    <div className="mt-1 text-xs text-green-300">
+                                      {t("تم الحضور", "Attended")}
+                                    </div>
+                                  )}
+                                  {booking.status === "noshow" && (
+                                    <div className="mt-1 text-xs text-rose-300">
+                                      {t("غياب", "No-show")}
+                                    </div>
+                                  )}
+                                  {booking.pendingReschedule && (
+                                    <div className="mt-1 text-xs text-amber-300">
+                                      {t("طلب تعديل قيد المراجعة", "Reschedule pending")}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function BookingsTab({ bookings }: {
   bookings: AccountData["bookings"];
 }) {
   const { lang } = useLang();
   const t = (arText: string, enText: string) => (lang === "ar" ? arText : enText);
   const [items, setItems] = useState(bookings);
-  const [filter, setFilter] = useState<"upcoming" | "past">("upcoming");
+  const [filter, setFilter] = useState<"upcoming" | "past" | "weekly">("upcoming");
 
   useEffect(() => {
     fetch("/api/me/bookings", { cache: "no-store" })
@@ -2789,20 +2997,22 @@ function BookingsTab({ bookings }: {
       </div>
 
       <div className="flex gap-2">
-        {[["upcoming", `${t("القادمة", "Upcoming")} (${upcoming.length})`], ["past", `${t("السابقة", "Past")} (${past.length})`]].map(([v, l]) => (
+        {[["upcoming", `${t("القادمة", "Upcoming")} (${upcoming.length})`], ["past", `${t("السابقة", "Past")} (${past.length})`], ["weekly", t("جدولي الأسبوعي", "My weekly schedule")]].map(([v, l]) => (
           <button key={v} onClick={() => setFilter(v as typeof filter)} className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors ${filter === v ? "bg-red-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
             {l}
           </button>
         ))}
       </div>
 
-      {upcoming.length === 0 && (
+      {filter === "upcoming" && upcoming.length === 0 && (
         <div className="rounded-2xl border border-pink-400/20 bg-pink-500/10 p-4 text-xs text-pink-100">
           {t("لا توجد حجوزات قادمة حالياً لتعديلها. احجزي موعداً جديداً أولاً ثم يمكنك تعديل الموعد من هنا.", "There are no upcoming bookings to edit right now. Book a class first, then you can update it from here.")}
         </div>
       )}
 
-      {shown.length === 0 ? (
+      {filter === "weekly" ? (
+        <WeeklyBookingsSchedule bookings={items} />
+      ) : shown.length === 0 ? (
         <div className={CARD + " text-center py-10"}>
           <div className="text-4xl mb-3">📅</div>
           <p className="text-gray-400">{filter === "upcoming" ? t("لا توجد حجوزات قادمة حاليًا.", "No upcoming bookings right now.") : t("لا توجد حجوزات سابقة حتى الآن.", "No past bookings yet.")}</p>
@@ -7670,6 +7880,7 @@ export default function AccountClient({ data }: { data: AccountData }) {
           {/* Content */}
           <main className="flex-1 min-w-0">
             {activeTab === "profile"              && <ProfileTab              user={data.user} profileComplete={data.onboarding.profileComplete} profilePoints={data.onboarding.profilePoints} />}
+            {activeTab === "profile" && <BodyMeasurementsPanel mode="self" />}
             {activeTab === "trainerProfile"       && <TrainerProfileTab />}
             {activeTab === "nutritionistProfile"  && <NutritionistProfileTab />}
             {activeTab === "trainerDiscountCodes" && <TrainerDiscountCodesTab />}

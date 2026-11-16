@@ -37,13 +37,25 @@ describe("Paymob central Order authority", () => {
     const id = randomUUID();
     const userId = randomUUID();
 
-    await db.user.create({
-      data: {
-        id: userId,
-        email: `order-authority-${id}@fitzone.test`,
-        name: "Order Authority Test",
-      },
-    });
+    /*
+     * R19_LEGACY_PAYMOB_FIXTURE_V1
+     *
+     * The legacy fitzone_test.User schema lacks newer profile,
+     * referral and marketing fields. This fixture only needs
+     * a user ID to exercise real Paymob payment finality.
+     *
+     * Parameterized SQL avoids projecting absent Prisma fields.
+     * It is strictly limited to this integration test.
+     */
+    await db.$executeRaw`
+      INSERT INTO \`User\` (id, email, name, updatedAt)
+      VALUES (
+        ${userId},
+        ${`order-authority-${id}@fitzone.test`},
+        ${"Order Authority Test"},
+        ${new Date()}
+      )
+    `;
 
     createdUsers.push(userId);
 
@@ -60,6 +72,7 @@ describe("Paymob central Order authority", () => {
         status,
         paymentMethod: "wallet",
       },
+      select: { id: true },
     });
 
     createdPayments.push(id);

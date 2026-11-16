@@ -90,7 +90,8 @@ export async function GET(request: Request) {
         where: {
           type: "credit",
           source: { in: ["legacy", "topup", "topup_bonus"] },
-          OR: paidTransactions.map((transaction) => {
+          OR: paidTransactions.filter((transaction) => transaction.userId !== null).map((transaction) => {
+            if (!transaction.userId) throw new Error("WALLET_TOPUP_OWNER_MISSING");
             const settledAt = transaction.paidAt ?? transaction.createdAt;
             return {
               wallet: { userId: transaction.userId },
@@ -172,10 +173,10 @@ export async function GET(request: Request) {
         transaction.externalReference ?? transaction.id,
       createdAt: transaction.createdAt.toISOString(),
       paidAt: transaction.paidAt?.toISOString() ?? null,
-      customerName: transaction.user.name ?? "—",
-      customerEmail: transaction.user.email ?? null,
-      customerPhone: transaction.user.phone ?? null,
-      currentWalletBalance: transaction.user.wallet?.balance ?? null,
+      customerName: transaction.user?.name ?? "—",
+      customerEmail: transaction.user?.email ?? null,
+      customerPhone: transaction.user?.phone ?? null,
+      currentWalletBalance: transaction.user?.wallet?.balance ?? null,
       journalStatus: journalStatusByPayment.get(transaction.id) ?? "missing",
       principalCreditEvidence: creditEvidence[index].principal,
       additionalReferencedCreditCandidate: creditEvidence[index].extraCredit,

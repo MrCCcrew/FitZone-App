@@ -402,7 +402,7 @@ export async function GET(request: Request) {
     return {
       id: order.id,
       date: order.confirmedAt!.toISOString(), // Sale event timestamp (confirmed! because query filters confirmedAt NOT NULL)
-      customerName: order.user.name ?? "عميل",
+      customerName: order.user?.name ?? order.recipientName ?? "ضيف المتجر",
       items: order.items.map((item) => item.product.name).join("، "),
       paymentMethod: order.paymentMethod,
       provider: payment?.provider ?? null,
@@ -440,7 +440,7 @@ export async function GET(request: Request) {
   const storeReturnRows = cancelledOrders.map((order) => ({
     id: order.id,
     date: order.cancelledAt!.toISOString(), // Return event timestamp (confirmed! because query filters cancelledAt NOT NULL)
-    customerName: order.user.name ?? "عميل",
+    customerName: order.user?.name ?? order.recipientName ?? "ضيف المتجر",
     items: order.items.map((item) => item.product.name).join("، "),
     paymentMethod: order.paymentMethod,
     total: order.total,
@@ -627,9 +627,14 @@ export async function GET(request: Request) {
     (purchase) => ({
       ...readOfferBoxCollection(
         purchase,
-        purchase.paymentTransactionId
-          ? offerPaymentMap.get(purchase.paymentTransactionId) ?? null
-          : null,
+        (() => {
+          const candidate = purchase.paymentTransactionId
+            ? offerPaymentMap.get(purchase.paymentTransactionId) ?? null
+            : null;
+          return candidate?.userId === purchase.userId
+            ? { ...candidate, userId: candidate.userId }
+            : null;
+        })(),
       ),
       customerName: purchase.user.name ?? "—",
     }),

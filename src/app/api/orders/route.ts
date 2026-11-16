@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
+import {
+  claimGuestCheckoutProof,
+  GuestCheckoutProofError,
+} from "@/lib/store-guest-proof-claim";
+import {
+  GUEST_OTP_COOKIE,
+  normalizeGuestPhone,
+  readGuestPhoneGrant,
+} from "@/lib/store-guest-verify";
 import { db } from "@/lib/db";
 import { allocateWalletDeductionBySource } from "@/lib/referral-credit-policy";
 import { createPaymentTransaction, restorePaymentBalanceAdjustments } from "@/lib/payments/service";
@@ -127,10 +136,6 @@ export async function POST(req: Request) {
     const currentUser = await getCurrentAppUser();
     const userId = currentUser?.id;
 
-    if (!userId) {
-      return NextResponse.json({ error: "يجب تسجيل الدخول أولًا." }, { status: 401 });
-    }
-
     const body = (await req.json()) as {
       items?: OrderItemInput[];
       address?: string;
@@ -143,6 +148,33 @@ export async function POST(req: Request) {
       pointsDeduct?: number;
     };
 
+    const isGuest = !userId;
+    const guestPhone = isGuest
+      ? normalizeGuestPhone(body.recipientPhone)
+      : null;
+
+    if (isGuest) {
+      if (
+        !guestPhone ||
+        !body.recipientName?.trim() ||
+        !body.address?.trim()
+      ) {
+        return NextResponse.json(
+          { error: "GUEST_CHECKOUT_CONTACT_DETAILS_REQUIRED" },
+          { status: 400 },
+        );
+      }
+
+      if (
+        Number(body.walletDeduct ?? 0) !== 0 ||
+        Number(body.pointsDeduct ?? 0) !== 0
+      ) {
+        return NextResponse.json(
+          { error: "GUEST_REWARDS_NOT_ALLOWED" },
+          { status: 403 },
+        );
+      }
+    }
     const items = Array.isArray(body.items) ? body.items.filter((item) => item.productId && item.quantity > 0) : [];
     if (items.length === 0) {
       return NextResponse.json({ error: "السلة فارغة." }, { status: 400 });
@@ -220,7 +252,7 @@ export async function POST(req: Request) {
 
     // ── Free-gifts game session: resolve gift products, discount, shipping ──────
     const cookieStore = await cookies();
-    const gameToken = cookieStore.get(GAME_COOKIE)?.value ?? null;
+    const gameToken = userId ? cookieStore.get(GAME_COOKIE)?.value ?? null : null;
     const dbx = db as any;
 
     let giftProductIds = new Set<string>();
@@ -266,6 +298,13 @@ export async function POST(req: Request) {
 
     const paymentMethod = sanitizeMethod(body.paymentMethod);
 
+    if (isGuest && paymentMethod !== "cod") {
+      return NextResponse.json(
+        { error: "GUEST_PAYMOB_NOT_ENABLED_YET" },
+        { status: 503 },
+      );
+    }
+
     let deliveryOption: DeliverySnapshot | null = null;
     if (body.deliveryOptionId) {
       deliveryOption = await db.deliveryOption.findFirst({
@@ -294,7 +333,7 @@ export async function POST(req: Request) {
     let pointsEGP = 0;
     let pointValueEGP = 0.1;
 
-    if (walletDeductReq > 0 || pointsDeductReq > 0) {
+    if (userId && (walletDeductReq > 0 || pointsDeductReq > 0)) {
       const [walletRow, pointsRow, rewardSettings] = await Promise.all([
         walletDeductReq > 0 ? db.wallet.findUnique({ where: { userId }, select: { balance: true, referralBalance: true } }) : null,
         pointsDeductReq > 0 ? db.rewardPoints.findUnique({ where: { userId } }) : null,
@@ -343,7 +382,27 @@ export async function POST(req: Request) {
     const discountTotal = Math.round((validatedWalletDeduct + pointsEGP) * 100) / 100;
     const total = Math.max(0, baseTotal - discountTotal);
 
-    // ── Phase 2C: Atomic order creation + inventory reservation ────────
+    if (isGuest && total <= 0) {
+      return NextResponse.json(
+        { error: "GUEST_ZERO_TOTAL_NOT_ALLOWED" },
+        { status: 400 },
+      );
+    }
+
+    const guestGrant = isGuest
+      ? cookieStore.get(GUEST_OTP_COOKIE)?.value ?? null
+      : null;
+
+    if (isGuest) {
+      const verifiedPhone = readGuestPhoneGrant(guestGrant)?.phone;
+      if (!verifiedPhone || verifiedPhone !== guestPhone) {
+        return NextResponse.json(
+          { error: "GUEST_PHONE_VERIFICATION_REQUIRED" },
+          { status: 403 },
+        );
+      }
+    }
+        // ── Phase 2C: Atomic order creation + inventory reservation ────────
     const order = await db.$transaction(async (tx) => {
       // 1. Create order + items
       const newOrder = await tx.order.create({
@@ -395,6 +454,13 @@ export async function POST(req: Request) {
         include: { items: true },
       });
 
+      if (isGuest) {
+        await claimGuestCheckoutProof(tx, {
+          token: guestGrant,
+          recipientPhone: guestPhone!,
+          orderId: newOrder.id,
+        });
+      }
       // 2. Reserve inventory (reservedStock += quantity, stock unchanged)
       await reserveOrderInventoryOwnedFirst(
         tx,
@@ -407,7 +473,7 @@ export async function POST(req: Request) {
       return newOrder;
     }, { timeout: 10000 });
 
-    if (validatedWalletDeduct > 0) {
+    if (userId && validatedWalletDeduct > 0) {
       const wallet = await db.wallet.update({
         where: { userId },
         data: { balance: { decrement: validatedWalletDeduct } },
@@ -423,7 +489,7 @@ export async function POST(req: Request) {
       });
     }
 
-    if (validatedPointsDeduct > 0) {
+    if (userId && validatedPointsDeduct > 0) {
       const pointsRecord = await db.rewardPoints.update({
         where: { userId },
         data: { points: { decrement: validatedPointsDeduct } },
@@ -440,7 +506,7 @@ export async function POST(req: Request) {
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (total > 0 && paymentMethod === "paymob") {
+    if (userId && total > 0 && paymentMethod === "paymob") {
       try {
         const transaction = await createPaymentTransaction({
           userId,
@@ -482,7 +548,44 @@ export async function POST(req: Request) {
           paymentTransactionId: transaction.id,
         });
       } catch (error) {
-        // Phase 2C: Payment transaction creation failed - release reservation
+        /*
+         * R19_PAYMENT_UNCERTAINTY_GUARD_V1
+         *
+         * createPaymentTransaction commits its local payment before
+         * requesting the external Paymob checkout. A timeout or lost
+         * response is not evidence that Paymob did not charge.
+         *
+         * A committed payment requires reconciliation. Do not
+         * cancel this order, release inventory, or restore wallet
+         * and points merely because checkout initialization threw.
+         *
+         * Database-read failure also fails closed: do not catch
+         * the lookup and proceed to cleanup.
+         */
+        const committedPayment = await db.paymentTransaction.findFirst({
+          where: { orderId: order.id },
+          select: { id: true },
+        });
+
+        if (committedPayment) {
+          console.error("[ORDERS_PAYMENT_RECONCILIATION_REQUIRED]", {
+            orderId: order.id,
+            paymentTransactionId: committedPayment.id,
+            errorType: error instanceof Error ? error.name : "unknown",
+          });
+
+          return NextResponse.json(
+            {
+              error: "PAYMENT_RECONCILIATION_REQUIRED",
+              orderId: order.id,
+              message: "حالة الدفع لم تُحسم بعد. يُرجى عدم تكرار الدفع والتواصل مع الإدارة.",
+            },
+            { status: 503 },
+          );
+        }
+
+        // No local payment was committed: preserve the existing
+        // compensation flow for a definitively pre-payment failure.
         await db.$transaction(async (tx) => {
           // Release inventory reservation (reservedStock -= quantity, stock unchanged)
           await releaseOrderInventoryAllocations(
@@ -573,7 +676,7 @@ export async function POST(req: Request) {
     }
 
     // Auto-apply store gift campaign (fire-and-forget, never blocks order)
-    void tryGrantStoreGiftCampaign(userId, { id: order.id, subtotal, businessUnit: "store" });
+    if (userId) void tryGrantStoreGiftCampaign(userId, { id: order.id, subtotal, businessUnit: "store" });
 
     // Link confirmed game session to this order — prevents double-claiming
     if (gameSessionId) {
@@ -584,14 +687,16 @@ export async function POST(req: Request) {
     }
 
     // Create notification
-    await db.notification.create({
-      data: {
-        userId,
-        title: "تم تسجيل طلبك",
-        body: "تم حفظ طلبك بنجاح. يمكنك متابعة حالة الدفع من صفحة الطلبات.",
-        type: "info",
-      },
-    });
+    if (userId) {
+      await db.notification.create({
+        data: {
+          userId,
+          title: "تم تسجيل طلبك",
+          body: "تم حفظ طلبك بنجاح. يمكنك متابعة حالة الدفع من صفحة الطلبات.",
+          type: "info",
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -603,6 +708,13 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[ORDERS_POST]", error);
+
+    if (error instanceof GuestCheckoutProofError) {
+      return NextResponse.json(
+        { error: "GUEST_VERIFICATION_EXPIRED_OR_ALREADY_USED" },
+        { status: 409 },
+      );
+    }
 
     if (error instanceof InventoryReservationConflictError) {
       return NextResponse.json(

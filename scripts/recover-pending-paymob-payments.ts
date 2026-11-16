@@ -49,6 +49,12 @@ type RecoveryResult = {
   reason: string;
 };
 
+function hasRecoveryOwner<T extends { userId: string | null }>(
+  payment: T,
+): payment is T & { userId: string } {
+  return typeof payment.userId === "string" &&
+    payment.userId.trim().length > 0;
+}
 async function findCandidates(): Promise<RecoveryCandidate[]> {
   const whereClause: any = {
     provider: "paymob",
@@ -96,8 +102,17 @@ async function findCandidates(): Promise<RecoveryCandidate[]> {
     }
   }
 
+  const ownerlessCount =
+    pendingPayments.filter((payment) => !hasRecoveryOwner(payment)).length +
+    paidWithPendingMemberships.filter((payment) => !hasRecoveryOwner(payment)).length;
+
+  if (ownerlessCount > 0) {
+    console.warn(
+      `[PAYMOB_RECOVERY] ${ownerlessCount} ownerless membership payment(s) excluded from automatic recovery; manual review required.`,
+    );
+  }
   const candidates: RecoveryCandidate[] = [
-    ...pendingPayments.map(p => ({
+    ...pendingPayments.filter(hasRecoveryOwner).map(p => ({
       localTransactionId: p.id,
       userId: p.userId,
       userName: p.user?.name ?? null,
@@ -111,7 +126,7 @@ async function findCandidates(): Promise<RecoveryCandidate[]> {
       createdAt: p.createdAt,
       mode: "verify_payment" as const,
     })),
-    ...paidWithPendingMemberships.map(p => ({
+    ...paidWithPendingMemberships.filter(hasRecoveryOwner).map(p => ({
       localTransactionId: p.id,
       userId: p.userId,
       userName: p.user?.name ?? null,

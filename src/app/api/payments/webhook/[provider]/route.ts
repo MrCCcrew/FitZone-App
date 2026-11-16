@@ -428,6 +428,22 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
           error,
         );
 
+        /*
+         * R19_PAYMOB_PAID_FINALIZATION_RETRY_V1
+         * A verified paid callback is not fully handled when downstream
+         * reconciliation, inventory confirmation or accounting fails.
+         * Return a retryable error without changing payment status.
+         */
+        if (providerKey === "paymob" && result.status === "paid") {
+          return NextResponse.json(
+            {
+              received: false,
+              message: "Paid payment finalization requires retry",
+            },
+            { status: 503 },
+          );
+        }
+
         // NEVER promote a payment to paid solely because verification threw.
         // A signed failed callback may still close a genuinely failed attempt.
         if (result.status === "failed") {
@@ -475,6 +491,23 @@ export async function POST(req: Request, context: { params: Promise<{ provider: 
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error(`[WEBHOOK:${providerKey}] Unexpected error`, error);
+
+    /*
+     * R19_PAYMOB_WEBHOOK_UNEXPECTED_FAILURE_V1
+     *
+     * Unexpected processing errors must not acknowledge
+     * successful Paymob delivery.
+     */
+    if (providerKey === "paymob") {
+      return NextResponse.json(
+        {
+          received: false,
+          message: "Payment webhook processing failed",
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json({ received: true });
   }
 }

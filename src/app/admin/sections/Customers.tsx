@@ -1,4 +1,5 @@
 "use client";
+import BodyMeasurementsPanel from "@/components/body-measurements/BodyMeasurementsPanel";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Customer, CustomerMembershipReport, HealthSurveyResponse } from "../types";
@@ -2177,6 +2178,7 @@ export default function Customers() {
       {viewCustomer && (
         <Modal title="ملف العميل" onClose={() => setViewCustomer(null)}>
           <div className="space-y-5">
+            <BodyMeasurementsPanel key={viewCustomer.id} mode="admin" userId={viewCustomer.id} />
             <div className="flex items-center gap-4">
               <CustomerAvatar avatar={viewCustomer.avatar} name={viewCustomer.name} size={64} />
               <div>

@@ -127,6 +127,7 @@ model User {
   // App relations
   memberships                    UserMembership[]
   bookings                       Booking[]
+  bodyMeasurements              CustomerBodyMeasurement[]
   classExchangeRequests          ClassExchangeRequest[]
   orders                         Order[]
   paymentTransactions            PaymentTransaction[]
@@ -1867,7 +1868,7 @@ model ProductReview {
 
 model Order {
   id                    String    @id @default(cuid())
-  userId                String
+  userId                String?
   businessUnit          String    @default("store") // store | club
   subtotal              Float     @default(0)
   discountTotal         Float     @default(0)
@@ -1897,9 +1898,10 @@ model Order {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @default(now()) @updatedAt
 
-  user                 User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                 User?                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   deliveryOption       DeliveryOption?            @relation(fields: [deliveryOptionId], references: [id], onDelete: SetNull)
   deliveryCompany      DeliveryCompany?           @relation("OrderDeliveryCompany", fields: [deliveryCompanyId], references: [id], onDelete: SetNull)
+  guestCheckoutProof   GuestCheckoutProof?
   items                OrderItem[]
   paymentTransactions  PaymentTransaction[]
   statusHistory        OrderStatusHistory[]
@@ -1961,7 +1963,7 @@ model OrderInventoryAllocation {
 
 model PaymentTransaction {
   id                String    @id @default(cuid())
-  userId            String
+  userId            String?
   orderId           String?
   membershipId      String?
   offerId           String?
@@ -1987,7 +1989,7 @@ model PaymentTransaction {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                   User?                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   order                  Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
   analyticsEvents        AnalyticsEvent[]
   friendOfferParticipant FriendOfferParticipant?
@@ -4694,4 +4696,34 @@ model PopupOffer {
   offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
   @@index([isActive, sortOrder])
+}
+model CustomerBodyMeasurement {
+  id         String   @id @default(cuid())
+  userId     String
+  measuredAt DateTime @default(now())
+  weightKg   Float?
+  heightCm   Float?
+  chestCm    Float?
+  waistCm    Float?
+  hipsCm     Float?
+  armCm      Float?
+  thighCm    Float?
+  notes      String?  @db.VarChar(500)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, measuredAt])
+}
+model GuestCheckoutProof {
+  id          String    @id @default(cuid())
+  nonceHash   String    @unique @db.VarChar(64)
+  phone       String    @db.VarChar(20)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  orderId     String?   @unique
+  order       Order?    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+
+  @@index([expiresAt, consumedAt])
 }

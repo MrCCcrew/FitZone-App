@@ -56,7 +56,10 @@ export async function settleIndependentFriendOfferGroup(groupId: string) {
       providerPayload: payment.providerPayload,
     });
     if (verified.status !== "paid") throw new Error("FRIEND_INDEPENDENT_PROVIDER_ORDER_NOT_PAID");
-    evidence.set(p.id, payment);
+    if (!payment.userId) {
+      throw new Error("FRIEND_INDEPENDENT_PAYMENT_OWNER_MISSING");
+    }
+    evidence.set(p.id, { ...payment, userId: payment.userId });
   }
 
   // Preparation will independently re-verify the provider and create only

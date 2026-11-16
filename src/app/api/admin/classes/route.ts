@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminFeature } from "@/lib/admin-guard";
 import { canManageClassTypes } from "@/lib/admin-permissions";
 import { db } from "@/lib/db";
+import { cairoCalendarDateKey } from "@/lib/fitzone-time";
 import { updateClassWithCapacityAdjustment, ClassCapacityError } from "@/lib/class-capacity-adjustment";
 import { clearPublicApiCache } from "@/lib/public-cache";
 import { resolveOrCreateClassType } from "@/lib/class-type-catalog";
@@ -104,6 +105,9 @@ function parseTrialConfig(records: Array<{ section: string; content: string }>):
 }
 
 export async function GET() {
+  const dateAnchor = new Date(
+    `${cairoCalendarDateKey(new Date())}T00:00:00.000Z`,
+  );
   const guard = await requireAdminFeature("classes");
   if ("error" in guard) return guard.error;
 
@@ -125,7 +129,14 @@ export async function GET() {
       include: {
         trainer: true,
         classType: true,
-        schedules: { where: { isActive: true }, take: 10, orderBy: { date: "asc" } },
+        schedules: {
+          where: {
+            isActive: true,
+            date: { gte: dateAnchor },
+          },
+          take: 10,
+          orderBy: { date: "asc" },
+        },
       },
       orderBy: { name: "asc" },
     }),

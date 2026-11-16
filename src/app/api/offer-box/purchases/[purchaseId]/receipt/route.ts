@@ -85,7 +85,7 @@ export async function GET(
       })
     : null;
 
-  const collection = readOfferBoxCollection(purchase, payment);
+  const collection = readOfferBoxCollection(purchase, payment?.userId === purchase.userId ? { ...payment, userId: payment.userId } : null);
 
   if (
     (collection.confirmedConsiderationAmount ?? collection.confirmedPaidAmount) <= 0 ||

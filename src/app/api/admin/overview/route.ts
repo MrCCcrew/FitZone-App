@@ -260,7 +260,7 @@ export async function GET() {
 
     ...recentOrders.map((order) => ({
       type: "order",
-      text: `طلب جديد من ${order.user.name ?? "—"} (${order.total.toLocaleString("ar-EG")} ج.م)`,
+      text: `طلب جديد من ${order.user?.name ?? order.recipientName ?? "ضيف المتجر"} (${order.total.toLocaleString("ar-EG")} ج.م)`,
       time: order.createdAt,
     })),
 

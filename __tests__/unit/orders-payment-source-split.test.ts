@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   rewardHistoryCreate: vi.fn(),
   deliveryOptionFindFirst: vi.fn(),
   notificationCreate: vi.fn(),
+  paymentTransactionFindFirst: vi.fn(),
 
   transaction: vi.fn(),
   txOrderCreate: vi.fn(),
@@ -87,6 +88,9 @@ vi.mock("@/lib/db", () => ({
 
     notification: {
       create: mocks.notificationCreate,
+    },
+    paymentTransaction: {
+      findFirst: mocks.paymentTransactionFindFirst,
     },
   },
 }));
@@ -338,6 +342,10 @@ describe(
               new Error("PAYMOB_INIT_FAILED"),
             );
 
+          // Initialization failed before a payment was committed.
+          // The existing 502 + compensation contract must survive.
+          mocks.paymentTransactionFindFirst.mockResolvedValue(null);
+
           const response = await POST(request());
 
           expect(response.status).toBe(502);
@@ -360,6 +368,52 @@ describe(
             pointsCount: 0,
             reference: "order-1",
           });
+        } finally {
+          errorSpy.mockRestore();
+        }
+      },
+    );
+
+    it(
+      "preserves wallet and reserved inventory when Paymob result is uncertain",
+      async () => {
+        const errorSpy = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => undefined);
+
+        try {
+          mocks.createPaymentTransaction.mockRejectedValue(
+            new Error("PAYMOB_RESPONSE_LOST"),
+          );
+
+          mocks.paymentTransactionFindFirst.mockResolvedValue({
+            id: "payment-uncertain-1",
+          });
+
+          const response = await POST(request());
+
+          expect(response.status).toBe(503);
+          expect(await response.json()).toEqual(
+            expect.objectContaining({
+              error: "PAYMENT_RECONCILIATION_REQUIRED",
+              orderId: "order-1",
+            }),
+          );
+
+          expect(
+            mocks.paymentTransactionFindFirst,
+          ).toHaveBeenCalledWith({
+            where: { orderId: "order-1" },
+            select: { id: true },
+          });
+
+          expect(
+            mocks.releaseOrderInventoryAllocations,
+          ).not.toHaveBeenCalled();
+
+          expect(
+            mocks.restorePaymentBalanceAdjustments,
+          ).not.toHaveBeenCalled();
         } finally {
           errorSpy.mockRestore();
         }

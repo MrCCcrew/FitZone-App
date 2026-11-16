@@ -1,4 +1,5 @@
 "use client";
+import PaidRenewalsReport from "@/components/reports/PaidRenewalsReport";
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { AdminSectionShell, AdminCard, AdminEmptyState } from "./shared";
@@ -3956,7 +3957,10 @@ export default function Accounting() {
         <ContractsCommissionsTab data={data} />
       )}
       {tab === "customerStatement" && (
-        <CustomerStatementTab from={from} to={to} />
+        <>
+          <CustomerStatementTab from={from} to={to} />
+          <PaidRenewalsReport />
+        </>
       )}
     </AdminSectionShell>
   );

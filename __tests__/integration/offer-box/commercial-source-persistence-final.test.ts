@@ -2025,7 +2025,7 @@ describe("direct commercial payment binding", () => {
           });
 
         const collection =
-          readOfferBoxCollection(paid, confirmed);
+          readOfferBoxCollection(paid, confirmed.userId === paid.userId ? { ...confirmed, userId: confirmed.userId } : null);
 
         expect(collection.confirmedPaidAmount)
           .toBe(500);

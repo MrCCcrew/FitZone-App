@@ -58,8 +58,10 @@ import type {
   PaymentStatus,
 } from "@/lib/payments/types";
 
+import { normalizeGuestPhone } from "@/lib/store-guest-verify";
+
 type CreatePaymentTransactionInput = {
-  userId: string;
+  userId: string | null;
   provider?: string | null;
   purpose: PaymentPurpose;
   businessUnit?: "store" | "club";
@@ -1201,6 +1203,73 @@ export async function createPaymentTransaction(
     throw new Error("قيمة الدفع غير صحيحة.");
   }
 
+  if (input.userId === null) {
+    if (
+      provider.key !== "paymob" ||
+      input.purpose !== "order" ||
+      input.businessUnit !== "store" ||
+      !input.orderId ||
+      input.membershipId != null ||
+      input.offerId != null ||
+      input.friendOfferShare === true ||
+      !input.customer?.name?.trim()
+    ) {
+      throw new Error("GUEST_PAYMENT_CONTRACT_INVALID");
+    }
+
+    const [guestOrder, guestProof, existingPayment] =
+      await Promise.all([
+        db.order.findUnique({
+          where: { id: input.orderId },
+          select: {
+            id: true,
+            userId: true,
+            businessUnit: true,
+            status: true,
+            paymentMethod: true,
+            total: true,
+            recipientPhone: true,
+            recipientName: true,
+          },
+        }),
+        db.guestCheckoutProof.findUnique({
+          where: { orderId: input.orderId },
+          select: {
+            phone: true,
+            consumedAt: true,
+            expiresAt: true,
+          },
+        }),
+        db.paymentTransaction.findFirst({
+          where: { orderId: input.orderId },
+          select: { id: true },
+        }),
+      ]);
+
+    const checkoutPhone = normalizeGuestPhone(input.customer?.phone);
+    const recipientPhone = normalizeGuestPhone(
+      guestOrder?.recipientPhone,
+    );
+
+    if (
+      !guestOrder ||
+      guestOrder.userId !== null ||
+      guestOrder.businessUnit !== "store" ||
+      guestOrder.status !== "pending" ||
+      guestOrder.paymentMethod !== "paymob" ||
+      !guestOrder.recipientName?.trim() ||
+      guestOrder.recipientName.trim() !== input.customer.name.trim() ||
+      !guestProof?.consumedAt ||
+      guestProof.expiresAt <= guestProof.consumedAt ||
+      !checkoutPhone ||
+      checkoutPhone !== recipientPhone ||
+      guestProof.phone !== checkoutPhone ||
+      Math.abs(guestOrder.total - amount) > 0.005 ||
+      existingPayment
+    ) {
+      throw new Error("GUEST_PAYMENT_ORDER_PROOF_INVALID");
+    }
+  }
   /*
    * Payment checkout expiry must be derived from the original
    * pending membership hold, never from a new 60-minute timer.
@@ -1334,6 +1403,90 @@ export async function createPaymentTransaction(
   }
 
   const transaction = await db.$transaction(async (tx) => {
+    if (input.userId === null) {
+      const guestOrderId = input.orderId;
+
+      if (!guestOrderId) {
+        throw new Error("GUEST_PAYMENT_ORDER_REQUIRED");
+      }
+
+      /*
+       * GUEST_ORDER_PAYMENT_LOCK_V1
+       *
+       * Serialize all guest payment creation attempts on the
+       * physical Order row. This lock is held until the local
+       * PaymentTransaction is committed.
+       *
+       * Never call the external provider while this lock is held.
+       */
+      const lockedOrders = await tx.$queryRaw<Array<{
+        id: string;
+        userId: string | null;
+        businessUnit: string;
+        status: string;
+        paymentMethod: string;
+        total: number;
+      }>>`
+        SELECT id, userId, businessUnit, status, paymentMethod, total
+        FROM \`Order\`
+        WHERE id = ${guestOrderId}
+        FOR UPDATE
+      `;
+
+      if (lockedOrders.length !== 1) {
+        throw new Error("GUEST_PAYMENT_ORDER_LOCK_FAILED");
+      }
+
+      const lockedOrder = lockedOrders[0];
+
+      if (
+        lockedOrder.userId !== null ||
+        lockedOrder.businessUnit !== "store" ||
+        lockedOrder.status !== "pending" ||
+        lockedOrder.paymentMethod !== "paymob" ||
+        Math.abs(Number(lockedOrder.total) - amount) > 0.005
+      ) {
+        throw new Error("GUEST_PAYMENT_LOCKED_ORDER_INVALID");
+      }
+
+      const lockedProof = await tx.guestCheckoutProof.findUnique({
+        where: { orderId: guestOrderId },
+        select: {
+          phone: true,
+          consumedAt: true,
+          expiresAt: true,
+        },
+      });
+
+      const lockedPhone = normalizeGuestPhone(input.customer?.phone);
+
+      if (
+        !lockedProof ||
+        !lockedProof.consumedAt ||
+        lockedProof.expiresAt <= lockedProof.consumedAt ||
+        !lockedPhone ||
+        lockedProof.phone !== lockedPhone
+      ) {
+        throw new Error("GUEST_PAYMENT_LOCKED_PROOF_INVALID");
+      }
+
+      const previousPayment = await tx.paymentTransaction.findFirst({
+        where: { orderId: guestOrderId },
+        select: { id: true },
+      });
+
+      if (previousPayment) {
+        /*
+         * Never automatically create another provider intention.
+         * Even an apparently failed local attempt may have a
+         * live or successfully charged Paymob transaction.
+         */
+        throw new Error(
+          "GUEST_PAYMENT_ALREADY_CLAIMED_RECONCILIATION_REQUIRED",
+        );
+      }
+    }
+
     const referenceCategory = await resolvePaymentReferenceCategory(tx, input);
     const referenceCode = await generatePaymentReferenceCode(
       tx,
@@ -1372,7 +1525,7 @@ export async function createPaymentTransaction(
     returnUrl: input.returnUrl ?? null,
     cancelUrl: input.cancelUrl ?? null,
     customer: {
-      id: input.userId,
+      id: input.userId ?? transaction.id,
       name: input.customer?.name ?? null,
       email: input.customer?.email ?? null,
       phone: input.customer?.phone ?? null,
@@ -1878,6 +2031,80 @@ async function reconcilePaidPrivateSessionApplication(input: {
   } catch {}
 }
 
+async function ensurePaidStoreOrderFinalized(orderId: string) {
+      // Phase 2C: Convert reservation to sale atomically
+      const { confirmOrderInventoryAllocationSale } =
+        await import("@/lib/order-inventory-allocation-service");
+
+      const order = await db.order.findUnique({
+        where: { id: orderId },
+        select: {
+          status: true,
+          subtotal: true,
+          shippingFee: true,
+          discountTotal: true,
+          total: true,
+          paymentMethod: true,
+          address: true,
+          deliveryLabel: true,
+          isClubPickup: true,
+          inventoryDeducted: true,
+          items: { include: { product: { select: { name: true } } } },
+        },
+      });
+
+      if (order?.status === "pending" && !order.inventoryDeducted) {
+        // Phase 2C: Convert reservation → sale
+        await db.$transaction(
+          async (tx) => {
+            // Atomic claim: only process if still pending
+            const claimed = await tx.order.updateMany({
+              where: { id: orderId, status: "pending" },
+              data: {
+                status: "confirmed",
+                inventoryDeducted: true,
+                confirmedAt: new Date(), // Immutable: set once at sale completion
+              },
+            });
+
+            if (claimed.count === 0) {
+              return; // Already processed by another webhook
+            }
+
+            // Convert reservation to sale (stock -= qty, reservedStock -= qty, capture COGS)
+            const saleResults = await confirmOrderInventoryAllocationSale(
+              tx,
+              orderId,
+            );
+
+            // Phase 4: Post GL journal for sale.
+            // This is intentionally fail-closed inside the same transaction:
+            // if accounting fails, order/inventory/allocation/consignment
+            // liability changes must all roll back.
+            const { postAllocatedSaleJournal } =
+              await import("@/lib/accounting-service");
+
+            await postAllocatedSaleJournal(
+              tx,
+              orderId,
+              order.total,
+              saleResults,
+              order.paymentMethod,
+            );
+          },
+          { timeout: 15000 },
+        );
+      } else if (order?.status === "pending" && order.inventoryDeducted) {
+        // Already converted (idempotent webhook retry)
+        await db.order.update({
+          where: { id: orderId },
+          data: { status: "confirmed" },
+        });
+      }
+
+  return order;
+}
+
 export async function updatePaymentTransactionStatus(
   transactionId: string,
   status: PaymentStatus,
@@ -2059,6 +2286,12 @@ export async function updatePaymentTransactionStatus(
       });
     }
 
+    // R19_PAID_STORE_ORDER_CRASH_RECOVERY_V1
+    // Reuse the original atomic order/inventory/GL finalization.
+    // Do not replay referral rewards or notification emails.
+    if (current?.purpose === "order" && current.orderId) {
+      await ensurePaidStoreOrderFinalized(current.orderId);
+    }
     return mapPaymentTransaction(current!);
   }
 
@@ -2133,6 +2366,10 @@ export async function updatePaymentTransactionStatus(
        * or promotional credit twice.
        */
       if (claimed.count === 0) return null;
+
+      if (!payment.userId) {
+        throw new Error("WALLET_TOPUP_PAYMENT_OWNER_MISSING");
+      }
 
       triggerWalletTopupTestFailpoint("credit");
 
@@ -2810,6 +3047,10 @@ export async function updatePaymentTransactionStatus(
         transactionId,
       ).catch(() => null);
 
+      if (!existing.userId) {
+        throw new Error("MEMBERSHIP_PAYMENT_OWNER_MISSING");
+      }
+
       // Execute post-activation reconciliation with row-lock exact-once guarantee
       await runPaidMembershipPostActivationReconciliation({
         transactionId,
@@ -2824,76 +3065,7 @@ export async function updatePaymentTransactionStatus(
     }
 
     if (existing?.orderId) {
-      // Phase 2C: Convert reservation to sale atomically
-      const { confirmOrderInventoryAllocationSale } =
-        await import("@/lib/order-inventory-allocation-service");
-
-      const order = await db.order.findUnique({
-        where: { id: existing.orderId },
-        select: {
-          status: true,
-          subtotal: true,
-          shippingFee: true,
-          discountTotal: true,
-          total: true,
-          paymentMethod: true,
-          address: true,
-          deliveryLabel: true,
-          isClubPickup: true,
-          inventoryDeducted: true,
-          items: { include: { product: { select: { name: true } } } },
-        },
-      });
-
-      if (order?.status === "pending" && !order.inventoryDeducted) {
-        // Phase 2C: Convert reservation → sale
-        await db.$transaction(
-          async (tx) => {
-            // Atomic claim: only process if still pending
-            const claimed = await tx.order.updateMany({
-              where: { id: existing.orderId!, status: "pending" },
-              data: {
-                status: "confirmed",
-                inventoryDeducted: true,
-                confirmedAt: new Date(), // Immutable: set once at sale completion
-              },
-            });
-
-            if (claimed.count === 0) {
-              return; // Already processed by another webhook
-            }
-
-            // Convert reservation to sale (stock -= qty, reservedStock -= qty, capture COGS)
-            const saleResults = await confirmOrderInventoryAllocationSale(
-              tx,
-              existing.orderId!,
-            );
-
-            // Phase 4: Post GL journal for sale.
-            // This is intentionally fail-closed inside the same transaction:
-            // if accounting fails, order/inventory/allocation/consignment
-            // liability changes must all roll back.
-            const { postAllocatedSaleJournal } =
-              await import("@/lib/accounting-service");
-
-            await postAllocatedSaleJournal(
-              tx,
-              existing.orderId!,
-              order.total,
-              saleResults,
-              order.paymentMethod,
-            );
-          },
-          { timeout: 15000 },
-        );
-      } else if (order?.status === "pending" && order.inventoryDeducted) {
-        // Already converted (idempotent webhook retry)
-        await db.order.update({
-          where: { id: existing.orderId },
-          data: { status: "confirmed" },
-        });
-      }
-
+      const order = await ensurePaidStoreOrderFinalized(existing.orderId);
       // Unlock pending referral reward for Paymob-confirmed store orders
       if (order && existing.userId) {
         try {
@@ -3678,6 +3850,10 @@ export async function recoverPaidMembershipActivation(
 
   console.info(`[RECOVERY] Membership activation/booking guarantee completed`);
 
+  if (!payment.userId) {
+    throw new Error("RECOVERY_MEMBERSHIP_OWNER_MISSING");
+  }
+
   console.info(`[RECOVERY] Running post-activation reconciliation`);
 
   // Run post-activation reconciliation (commissions, rewards, notifications, etc.)
@@ -4092,6 +4268,10 @@ export async function recoverVerifiedPaymobPayment(
 
   if (result.carryoverBlocked || !result.membershipData) {
     return mapPaymentTransaction(result.transaction);
+  }
+
+  if (!result.transaction.userId) {
+    throw new Error("MEMBERSHIP_RECONCILIATION_OWNER_MISSING");
   }
 
   if (result.isTimeoutCancelledRecovery) {

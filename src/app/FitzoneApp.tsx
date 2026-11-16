@@ -280,9 +280,14 @@ const css = `
 const publicApiCache: Record<string, Promise<Record<string, unknown>> | null> =
   {};
 
+// Match the public endpoint's 30-second cache window.
+const PUBLIC_API_CLIENT_TTL_MS = 30_000;
+const publicApiCacheExpiry: Record<string, number> = {};
+
 function resetPublicApiCache() {
   Object.keys(publicApiCache).forEach((key) => {
     publicApiCache[key] = null;
+    delete publicApiCacheExpiry[key];
   });
 }
 
@@ -296,11 +301,14 @@ function loadPublicApi(force = false, offerId?: string | null) {
   const lang = getUiLang();
   const cacheKey = offerId ? `${lang}:offer:${offerId}` : lang;
 
-  if (force) {
+  if (force || (publicApiCacheExpiry[cacheKey] ?? 0) <= Date.now()) {
     publicApiCache[cacheKey] = null;
+    delete publicApiCacheExpiry[cacheKey];
   }
 
   if (!publicApiCache[cacheKey]) {
+    publicApiCacheExpiry[cacheKey] =
+      Date.now() + PUBLIC_API_CLIENT_TTL_MS;
     const url = offerId
       ? `/api/public?lang=${lang}&offerId=${offerId}`
       : `/api/public?lang=${lang}`;
@@ -309,6 +317,7 @@ function loadPublicApi(force = false, offerId?: string | null) {
       .then((r) => r.json())
       .catch((error) => {
         publicApiCache[cacheKey] = null;
+        delete publicApiCacheExpiry[cacheKey];
         throw error;
       });
   }
@@ -321,6 +330,7 @@ function clearOfferCaches() {
   Object.keys(publicApiCache).forEach((key) => {
     if (key.startsWith(`${lang}:offer:`)) {
       delete publicApiCache[key];
+      delete publicApiCacheExpiry[key];
     }
   });
 }
@@ -20778,7 +20788,7 @@ const ShopPage = ({
   const [products, setProducts] = useState<StoreProduct[]>(DEFAULT_PRODUCTS);
 
   useEffect(() => {
-    loadPublicApi(true)
+    loadPublicApi()
       .then((d) => {
         if (Array.isArray(d.categories) && d.categories.length > 0) {
           setCategories(
@@ -22980,6 +22990,12 @@ const CartPage = ({
   const { lang } = useLang();
   const t = useT();
   const [step, setStep] = useState("cart");
+  // R19_GUEST_STORE_CHECKOUT_UI_V1
+  const guestCheckout = !summary?.authenticated || summary?.isAppUser === false;
+  const [guestOtpCode, setGuestOtpCode] = useState("");
+  const [guestVerifiedPhone, setGuestVerifiedPhone] = useState("");
+  const [guestOtpBusy, setGuestOtpBusy] = useState(false);
+  const [guestOtpSent, setGuestOtpSent] = useState(false);
   const [payMethod, setPayMethod] = useState("paymob");
   const [useRewards, setUseRewards] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
@@ -23212,8 +23228,8 @@ const CartPage = ({
       });
     }
 
-    return methods;
-  }, [lang, paymentSettings, selectedDelivery]);
+    return guestCheckout ? methods.filter((method) => method.id === "cod") : methods;
+  }, [lang, paymentSettings, selectedDelivery, guestCheckout]);
 
   useEffect(() => {
     if (!availablePayMethods.find((m) => m.id === payMethod)) {
@@ -23310,10 +23326,81 @@ const CartPage = ({
     );
   };
 
-  const submitOrder = async () => {
-    if (!summary?.authenticated || summary?.isAppUser === false) {
-      window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  const sendGuestOtp = async () => {
+    if (!address.phone.trim()) {
+      setOrderMsg({ text: "أدخلي رقم الهاتف المصري أولاً.", ok: false });
       return;
+    }
+    setGuestOtpBusy(true);
+    setOrderMsg(null);
+    setGuestVerifiedPhone("");
+    setGuestOtpSent(false);
+    try {
+      const response = await fetch("/api/store/guest-otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: address.phone.trim() }),
+      });
+      if (!response.ok) {
+        setOrderMsg({
+          text: response.status === 429
+            ? "تم تجاوز عدد محاولات إرسال الرمز. حاولي لاحقاً."
+            : "تعذر إرسال رمز التحقق. تأكدي من رقم الهاتف وحاولي لاحقاً.",
+          ok: false,
+        });
+        return;
+      }
+      setGuestOtpSent(true);
+      setOrderMsg({ text: "تم إرسال رمز التحقق إلى هاتفك.", ok: true });
+    } catch {
+      setOrderMsg({ text: "تعذر الاتصال بخدمة التحقق.", ok: false });
+    } finally {
+      setGuestOtpBusy(false);
+    }
+  };
+
+  const checkGuestOtp = async () => {
+    if (!guestOtpSent || !/^\d{4,10}$/.test(guestOtpCode.trim())) {
+      setOrderMsg({ text: "أدخلي رمز التحقق الصحيح.", ok: false });
+      return;
+    }
+    setGuestOtpBusy(true);
+    setOrderMsg(null);
+    try {
+      const phone = address.phone.trim();
+      const response = await fetch("/api/store/guest-otp/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code: guestOtpCode.trim() }),
+      });
+      const data = (await response.json()) as { verified?: boolean };
+      if (!response.ok || data.verified !== true) {
+        setGuestVerifiedPhone("");
+        setOrderMsg({ text: "الرمز غير صحيح أو انتهت صلاحيته.", ok: false });
+        return;
+      }
+      setGuestVerifiedPhone(phone);
+      setOrderMsg({ text: "تم التحقق من رقم الهاتف بنجاح.", ok: true });
+    } catch {
+      setOrderMsg({ text: "تعذر التحقق من الرمز.", ok: false });
+    } finally {
+      setGuestOtpBusy(false);
+    }
+  };
+  const submitOrder = async () => {
+    if (guestCheckout) {
+      if (payMethod !== "cod" || !availablePayMethods.some((method) => method.id === "cod")) {
+        setOrderMsg({ text: "الدفع عند الاستلام غير متاح لوسيلة الشحن المختارة. الدفع الإلكتروني للضيفة غير مفعل حالياً.", ok: false });
+        return;
+      }
+      if (guestVerifiedPhone !== address.phone.trim()) {
+        setOrderMsg({ text: "يجب التحقق من رقم الهاتف الحالي قبل تأكيد الطلب.", ok: false });
+        return;
+      }
+      if (!`${address.firstName} ${address.lastName}`.trim()) {
+        setOrderMsg({ text: "يرجى إدخال اسم المستلمة.", ok: false });
+        return;
+      }
     }
     if (cartItems.length === 0) return;
     if (!address.phone.trim() || !address.details.trim()) {
@@ -23350,8 +23437,8 @@ const CartPage = ({
           paymentMethod: payMethod,
           deliveryOptionId: selectedDeliveryId,
           isClubPickup: selectedDelivery?.type === "pickup",
-          walletDeduct: walletDiscount > 0 ? walletDiscount : undefined,
-          pointsDeduct: pointsToDeduct > 0 ? pointsToDeduct : undefined,
+          walletDeduct: !guestCheckout && walletDiscount > 0 ? walletDiscount : undefined,
+          pointsDeduct: !guestCheckout && pointsToDeduct > 0 ? pointsToDeduct : undefined,
         }),
       });
 
@@ -23363,7 +23450,7 @@ const CartPage = ({
         transactionId?: string | null;
       };
       if (!res.ok) {
-        if (res.status === 401) {
+        if (res.status === 401 && !guestCheckout) {
           window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
           return;
         }
@@ -23446,7 +23533,7 @@ const CartPage = ({
           </p>
         )}
         <p style={{ color: C.gray, fontSize: 13, marginBottom: 24 }}>
-          تم حفظ الطلب في النظام، وسيظهر في حسابك.
+          {guestCheckout ? "تم تسجيل الطلب بدون حساب. احتفظي برقم الطلب للمتابعة." : "تم حفظ الطلب في النظام، وسيظهر في حسابك."}
         </p>
         <div
           style={{
@@ -23456,12 +23543,14 @@ const CartPage = ({
             justifyContent: "center",
           }}
         >
-          <button
-            className="btn-primary"
-            onClick={() => (window.location.href = "/account?tab=orders")}
-          >
-            عرض طلباتي
-          </button>
+          {!guestCheckout && (
+            <button
+              className="btn-primary"
+              onClick={() => (window.location.href = "/account?tab=orders")}
+            >
+              عرض طلباتي
+            </button>
+          )}
           <button className="btn-ghost" onClick={() => navigate("home")}>
             العودة للرئيسية
           </button>
@@ -24169,7 +24258,59 @@ const CartPage = ({
                   {t("طريقة الدفع", "Payment method")}
                 </h2>
                 <div className="card" style={{ padding: 20 }}>
-                  {availablePayMethods.map((method) => (
+                  {guestCheckout && (
+                    <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+                      <h3 style={{ color: C.white, fontWeight: 800, marginBottom: 8 }}>
+                        {t("تأكيد رقم الهاتف للشراء بدون حساب", "Verify phone for guest checkout")}
+                      </h3>
+                      <p style={{ color: C.gray, fontSize: 12, marginBottom: 12 }}>
+                        {t(
+                          "سيتم إرسال الرمز إلى رقم الهاتف الموجود في بيانات الاستلام. الشراء متاح بالدفع عند الاستلام فقط.",
+                          "The verification code is sent to the delivery contact phone. Guest checkout supports cash on delivery only."
+                        )}
+                      </p>
+                      <p style={{ color: C.grayLight, fontSize: 13, marginBottom: 10 }}>
+                        {address.phone || t("أدخلي الهاتف في خطوة العنوان", "Enter your phone in the address step")}
+                      </p>
+                      {guestVerifiedPhone === address.phone.trim() && guestVerifiedPhone ? (
+                        <p style={{ color: C.success, fontWeight: 700 }}>
+                          {t("تم التحقق من رقم الهاتف ✓", "Phone verified ✓")}
+                        </p>
+                      ) : (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            disabled={guestOtpBusy}
+                            onClick={() => void sendGuestOtp()}
+                          >
+                            {t("إرسال رمز التحقق", "Send verification code")}
+                          </button>
+                          {guestOtpSent && (
+                            <>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                placeholder={t("رمز التحقق", "Verification code")}
+                                value={guestOtpCode}
+                                onChange={(event) => setGuestOtpCode(event.target.value)}
+                                style={{ padding: 12, borderRadius: 8, width: "100%" }}
+                              />
+                              <button
+                                type="button"
+                                className="btn-primary"
+                                disabled={guestOtpBusy}
+                                onClick={() => void checkGuestOtp()}
+                              >
+                                {t("تأكيد الرمز", "Verify code")}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}                  {availablePayMethods.map((method) => (
                     <div
                       key={method.id}
                       onClick={() => setPayMethod(method.id)}
@@ -24476,7 +24617,7 @@ const CartPage = ({
                   </button>
                   <button
                     className="btn-primary"
-                    disabled={submitting}
+                    disabled={submitting || (guestCheckout && (payMethod !== "cod" || guestVerifiedPhone !== address.phone.trim()))}
                     style={{
                       flex: 1,
                       justifyContent: "center",

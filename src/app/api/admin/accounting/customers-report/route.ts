@@ -186,7 +186,7 @@ export async function GET(req: Request) {
       ? offerPaymentMap.get(purchase.paymentTransactionId) ?? null
       : null;
 
-    const collection = readOfferBoxCollection(purchase, payment);
+    const collection = readOfferBoxCollection(purchase, payment?.userId === purchase.userId ? { ...payment, userId: payment.userId } : null);
 
     const date = new Date(
       collection.paidAt ?? collection.createdAt,
