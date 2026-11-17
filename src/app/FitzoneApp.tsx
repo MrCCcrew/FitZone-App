@@ -20993,18 +20993,19 @@ const ShopPage = ({
           >
             <div
               style={{
-                overflowX: "auto",
+                overflowX: isMobile ? "auto" : "visible",
                 WebkitOverflowScrolling: "touch",
                 padding: "4px 2px 10px",
-                scrollbarWidth: "none",
+                scrollbarWidth: isMobile ? "none" : "auto",
               }}
             >
               <div
                 style={{
                   display: "flex",
                   gap: isMobile ? 8 : 10,
-                  flexWrap: "nowrap",
-                  minWidth: "max-content",
+                  flexWrap: isMobile ? "nowrap" : "wrap",
+                  minWidth: isMobile ? "max-content" : "0",
+                  maxWidth: "100%",
                   paddingInline: 2,
                 }}
               >

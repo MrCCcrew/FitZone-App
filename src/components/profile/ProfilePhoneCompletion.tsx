@@ -189,7 +189,7 @@ export default function ProfilePhoneCompletion() {
       {showReminder && (
         <div
           dir="rtl"
-          className="fixed bottom-5 left-4 right-4 z-[80] mx-auto max-w-md rounded-2xl border border-pink-300/30 bg-[#341627] p-4 text-white shadow-2xl sm:left-auto sm:right-6 sm:w-[390px]"
+          className="fixed left-1/2 top-1/2 z-[80] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-pink-300/30 bg-[#341627] p-4 text-white shadow-2xl sm:bottom-5 sm:left-auto sm:right-6 sm:top-auto sm:w-[390px] sm:translate-x-0 sm:translate-y-0"
           role="status"
         >
           <div className="flex items-start gap-3">
