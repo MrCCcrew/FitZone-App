@@ -14104,6 +14104,11 @@ const MembershipsPage = ({
               width: "100%",
               boxShadow: "0 24px 60px rgba(233,30,99,.2)",
               border: `1px solid ${C.border}`,
+              maxHeight: "calc(100dvh - 24px)",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              WebkitOverflowScrolling: "touch",
+              paddingBottom: "calc(100px + env(safe-area-inset-bottom, 0px))",
             }}
           >
             {(() => {
@@ -14968,7 +14973,24 @@ const MembershipsPage = ({
 
                       <button
                         className="btn-primary"
-                        style={{ width: "100%", justifyContent: "center" }}
+                        style={{
+                          width: viewportWidth() < 640
+                            ? "calc(100% - 40px)"
+                            : "100%",
+                          justifyContent: "center",
+                          position: viewportWidth() < 640 ? "fixed" : "sticky",
+                          bottom: viewportWidth() < 640
+                            ? "calc(12px + env(safe-area-inset-bottom, 0px))"
+                            : 0,
+                          left: viewportWidth() < 640 ? "50%" : undefined,
+                          transform: viewportWidth() < 640
+                            ? "translateX(-50%)"
+                            : undefined,
+                          maxWidth: viewportWidth() < 640 ? 480 : undefined,
+                          zIndex: 210,
+                          minHeight: 52,
+                          boxShadow: "0 6px 24px rgba(0,0,0,.2)",
+                        }}
                         onClick={() =>
                           handleSubscribe(
                             checkoutPreview.plan,

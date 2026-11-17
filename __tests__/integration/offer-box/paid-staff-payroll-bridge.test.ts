@@ -30,7 +30,14 @@ const allowedLegacy =
   url.pathname === "/fitzone_final_r06_20261110_201735" &&
   decodeURIComponent(url.username) === "fzr06_20261110_201735";
 
-if (!allowedR13 && !allowedLegacy) {
+const allowedR19B59 =
+  process.env.FITZONE_R19_B59_ISOLATED_INTEGRATION === "1" &&
+  !r13Requested &&
+  commonTestSafety &&
+  url.pathname === "/fitzone_r19_b59_gate_20261116223306" &&
+  decodeURIComponent(url.username) === "fitzone_b59_1917d4fa";
+
+if (!allowedR13 && !allowedLegacy && !allowedR19B59) {
   throw new Error("REFUSING_NON_ISOLATED_DATABASE");
 }
 

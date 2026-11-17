@@ -1,0 +1,3 @@
+ALTER TABLE `User`
+  ADD COLUMN `verifiedPhone` VARCHAR(20) NULL,
+  ADD COLUMN `phoneVerifiedAt` DATETIME(3) NULL;

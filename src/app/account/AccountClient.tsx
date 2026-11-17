@@ -993,7 +993,13 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
       const res = await fetch("/api/me/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          name: form.name,
+          gender: form.gender,
+          birthDate: form.birthDate,
+          governorate: form.governorate,
+          address: form.address,
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -1164,7 +1170,21 @@ function ProfileTab({ user, profileComplete, profilePoints }: { user: AccountDat
             </div>
             <div>
               <label className="block text-gray-500 text-xs mb-1.5">{t("رقم الهاتف", "Phone number")}</label>
-              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={INPUT} dir="ltr" placeholder="01XXXXXXXXX" />
+              <input
+                  value={form.phone}
+                  readOnly
+                  className={INPUT + " opacity-75"}
+                  dir="ltr"
+                  placeholder="01XXXXXXXXX"
+                  aria-label={t("رقم الهاتف المسجل", "Registered phone number")}
+                />
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new Event("fitzone:verify-profile-phone"))}
+                  className="mt-2 rounded-xl border border-pink-400/40 bg-pink-500/15 px-4 py-2 text-xs font-bold text-pink-200 hover:bg-pink-500/25"
+                >
+                  {t("توثيق أو تغيير رقم الهاتف", "Verify or change phone")}
+                </button>
             </div>
           </div>
 

@@ -43,7 +43,23 @@ export async function PATCH(req: Request) {
 
   const data: Record<string, unknown> = {};
   if (name       !== undefined) data.name       = name;
-  if (phone      !== undefined) data.phone      = phone || null;
+  if (phone !== undefined) {
+    const current = await db.user.findUnique({
+      where: { id: session.id },
+      select: { phone: true },
+    });
+
+    if (!current) {
+      return NextResponse.json({ error: "USER_NOT_FOUND" }, { status: 404 });
+    }
+
+    if ((current.phone ?? "").trim() !== phone) {
+      return NextResponse.json(
+        { error: "PHONE_CHANGE_REQUIRES_VERIFICATION" },
+        { status: 400 },
+      );
+    }
+  }
   if (gender     !== undefined) data.gender     = gender;
   if (governorate !== undefined) data.governorate = governorate;
   if (address    !== undefined) data.address    = address;

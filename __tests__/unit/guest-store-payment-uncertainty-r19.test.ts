@@ -48,28 +48,17 @@ describe("R19 payment uncertainty compensation guards", () => {
     );
   });
 
-  it("preserves order-intent balance when a payment exists", () => {
-    const start = intent.indexOf(
-      "R19_PAYMENT_UNCERTAINTY_GUARD_V1",
-    );
-    expect(start).toBeGreaterThan(-1);
-
-    const restore = intent.indexOf(
-      "await restorePaymentBalanceAdjustments(",
-      start,
-    );
-    const body = intent.slice(start, restore);
-
-    expect(body).toContain(
-      "db.paymentTransaction.findFirst({",
-    );
-    expect(body).toContain(
-      "where: { orderId: order.id }",
-    );
-    expect(body).toContain("if (committedPayment)");
-    expect(body).toContain(
-      'throw new Error("PAYMENT_RECONCILIATION_REQUIRED")',
-    );
+  it("retires legacy order-intent before any payment or balance mutation", () => {
+    expect(intent).toContain('export async function POST()');
+    expect(intent).toContain('"LEGACY_ORDER_INTENT_RETIRED"');
+    expect(intent).toContain('replacement: "/api/orders"');
+    expect(intent).toContain("status: 410");
+    expect(intent).not.toContain("createPaymentTransaction(");
+    expect(intent).not.toContain("restorePaymentBalanceAdjustments(");
+    expect(intent).not.toContain("db.$transaction(");
+    expect(intent).not.toContain("tx.order.create(");
+    expect(intent).not.toContain("tx.wallet.update(");
+    expect(intent).not.toContain("tx.rewardPoints.update(");
   });
 
   it("keeps guest Paymob disabled pending financial release", () => {

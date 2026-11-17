@@ -1,3 +1,4 @@
+import { isCompletedVerifiedProfile } from "@/lib/profile-phone-verification";
 import { redirect } from "next/navigation";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
@@ -457,7 +458,7 @@ async function getAccountData(userId: string) {
           }
         : null,
       onboarding: {
-        profileComplete: !!(user.phone && user.gender && user.birthDate && user.governorate),
+        profileComplete: isCompletedVerifiedProfile(user),
         emailVerified: !!user.emailVerified,
         hasReferral: (user.referral?.usages ?? []).some((u) => u.rewardGiven),
         hasPendingReferral: (user.referral?.usages ?? []).some((u) => !u.rewardGiven),

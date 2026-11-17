@@ -85,15 +85,36 @@ async function applyRedisRateLimit(key: string, limit: number, windowMs: number)
       return null;
     }
 
-    const payload = (await response.json()) as Array<{ result?: unknown }>;
-    const count = Number(payload?.[0]?.result ?? 0);
-    const ttlRaw = Number(payload?.[1]?.result ?? -1);
-    const retryAfterMs = ttlRaw > 0 ? ttlRaw : windowMs;
+    // Upstash can return HTTP 200 while an individual pipeline command failed.
+    // Never turn missing/error results into count=0 (which would fail open).
+    const payload: unknown = await response.json();
+    if (!Array.isArray(payload) || payload.length !== 3) return null;
+    const entries = payload as Array<{ result?: unknown; error?: unknown } | null>;
+    if (entries.some((entry) => !entry || typeof entry !== "object" || "error" in entry || !("result" in entry))) {
+      return null;
+    }
+
+    const rawCount = entries[0]?.result;
+    const rawTtl = entries[1]?.result;
+    const rawExpire = entries[2]?.result;
+    const count = Number(rawCount);
+    const ttlRaw = Number(rawTtl);
+
+    // INCR returns a positive integer; PTTL returns -1 on the first call
+    // because EXPIRE NX is applied afterwards in the same pipeline.
+    if (
+      (typeof rawCount !== "number" && typeof rawCount !== "string") ||
+      !Number.isSafeInteger(count) || count < 1 ||
+      (typeof rawTtl !== "number" && typeof rawTtl !== "string") ||
+      !Number.isSafeInteger(ttlRaw) || ttlRaw < -1 ||
+      ![0, 1, "0", "1"].includes(rawExpire as number | string) ||
+      (ttlRaw === -1 && (rawExpire === 0 || rawExpire === "0"))
+    ) return null;
 
     return {
       ok: count <= limit,
       remaining: Math.max(limit - count, 0),
-      retryAfterMs,
+      retryAfterMs: ttlRaw > 0 ? ttlRaw : windowMs,
       source: "redis",
     };
   } catch (error) {

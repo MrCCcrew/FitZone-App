@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Geist, Geist_Mono, Cairo, Tajawal } from "next/font/google";
 import Providers from "./Providers";
+import ProfilePhoneCompletion from "@/components/profile/ProfilePhoneCompletion";
 import AnalyticsTracker from "@/components/analytics/AnalyticsTracker";
 import { getHydrationServerSessionMarker, isHydrationAuthDebugEnabled } from "@/lib/hydration-auth-debug-server";
 import "./globals.css";
@@ -213,7 +214,7 @@ export default async function RootLayout({
         />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${cairo.variable} ${tajawal.variable} antialiased`}>
-        <Providers><Suspense fallback={null}><AnalyticsTracker /></Suspense>{children}</Providers>
+        <Providers><Suspense fallback={null}><AnalyticsTracker /></Suspense>{children}<ProfilePhoneCompletion /></Providers>
       </body>
     </html>
   );

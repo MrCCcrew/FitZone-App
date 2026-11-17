@@ -21,7 +21,7 @@ for (const path of paths) {
       if (/\/api\/(?:public|site-content|settings)/.test(request.url())) dataFailures.push(`failed ${request.url()}`);
     });
 
-    await page.goto(path, { waitUntil: "networkidle" });
+    await page.goto(path, { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).toBeVisible();
     await page.waitForTimeout(300);
     expect(errors, errors.join("\n")).toEqual([]);

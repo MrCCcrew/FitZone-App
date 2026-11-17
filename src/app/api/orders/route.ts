@@ -467,41 +467,55 @@ export async function POST(req: Request) {
         newOrder.id
       );
 
-      // Phase 2C: inventoryDeducted remains false until payment confirmation
-      // No movements created at reservation
+      // Phase 2C: inventoryDeducted remains false until payment confirmation.
+      // Reserve inventory AND claim wallet/points in the SAME transaction.
+      // Conditional updates prevent concurrent overspending on stale snapshots.
+      if (userId && validatedWalletDeduct > 0) {
+        const claimed = await tx.wallet.updateMany({
+          where: { userId, balance: { gte: validatedWalletDeduct } },
+          data: { balance: { decrement: validatedWalletDeduct } },
+        });
+        if (claimed.count !== 1) {
+          throw new Error("STORE_WALLET_BALANCE_CHANGED");
+        }
+        const wallet = await tx.wallet.findUnique({
+          where: { userId }, select: { id: true },
+        });
+        if (!wallet) throw new Error("STORE_WALLET_NOT_FOUND");
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            amount: validatedWalletDeduct,
+            type: "debit",
+            source: "general",
+            description: `سداد طلب رقم ${newOrder.id}`,
+          },
+        });
+      }
+
+      if (userId && validatedPointsDeduct > 0) {
+        const claimed = await tx.rewardPoints.updateMany({
+          where: { userId, points: { gte: validatedPointsDeduct } },
+          data: { points: { decrement: validatedPointsDeduct } },
+        });
+        if (claimed.count !== 1) {
+          throw new Error("STORE_REWARD_POINTS_CHANGED");
+        }
+        const pointsRecord = await tx.rewardPoints.findUnique({
+          where: { userId }, select: { id: true },
+        });
+        if (!pointsRecord) throw new Error("STORE_REWARD_POINTS_NOT_FOUND");
+        await tx.rewardHistory.create({
+          data: {
+            rewardId: pointsRecord.id,
+            points: -validatedPointsDeduct,
+            reason: `استخدام فيتزونات لسداد طلب رقم ${newOrder.id}`,
+          },
+        });
+      }
 
       return newOrder;
     }, { timeout: 10000 });
-
-    if (userId && validatedWalletDeduct > 0) {
-      const wallet = await db.wallet.update({
-        where: { userId },
-        data: { balance: { decrement: validatedWalletDeduct } },
-      });
-      await db.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          amount: validatedWalletDeduct,
-          type: "debit",
-          source: "general",
-          description: `سداد طلب رقم ${order.id}`,
-        },
-      });
-    }
-
-    if (userId && validatedPointsDeduct > 0) {
-      const pointsRecord = await db.rewardPoints.update({
-        where: { userId },
-        data: { points: { decrement: validatedPointsDeduct } },
-      });
-      await db.rewardHistory.create({
-        data: {
-          rewardId: pointsRecord.id,
-          points: -validatedPointsDeduct,
-          reason: `استخدام فيتزونات لسداد طلب رقم ${order.id}`,
-        },
-      });
-    }
 
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;

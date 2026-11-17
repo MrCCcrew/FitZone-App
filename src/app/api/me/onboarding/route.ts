@@ -1,4 +1,5 @@
-﻿import { NextResponse } from "next/server";
+import { isCompletedVerifiedProfile } from "@/lib/profile-phone-verification";
+import { NextResponse } from "next/server";
 import { getCurrentAppUser } from "@/lib/app-session";
 import { db } from "@/lib/db";
 import { getRewardSettings, calcTier } from "@/lib/reward-settings";
@@ -30,6 +31,8 @@ export async function POST(req: Request) {
       select: {
         id: true,
         phone: true,
+        verifiedPhone: true,
+        phoneVerifiedAt: true,
         gender: true,
         birthDate: true,
         governorate: true,
@@ -59,7 +62,7 @@ export async function POST(req: Request) {
   }
 
   // Verify the condition is actually met
-  if (reward === "profile_complete" && !(user.phone && user.gender && user.birthDate && user.governorate)) {
+  if (reward === "profile_complete" && !(isCompletedVerifiedProfile(user))) {
     return NextResponse.json({ error: "أكملي هاتفك ونوعك وتاريخ ميلادك ومحافظتك أولاً." }, { status: 400 });
   }
   if (reward === "email_verified" && !user.emailVerified) {

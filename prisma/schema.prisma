@@ -88,6 +88,8 @@ model User {
   email                   String?   @unique
   emailVerified           DateTime?
   phone                   String?
+  verifiedPhone           String?   @db.VarChar(20)
+  phoneVerifiedAt         DateTime?
   gender                  String? // single_graduated | married_new | married_with_kids | student
   birthDate               DateTime?
   governorate             String?

@@ -32,6 +32,15 @@ function r15zAllowedHrDatabase(dbName: string | undefined | null): boolean {
     u.hostname !== "127.0.0.1"
   ) return false;
 
+  if (process.env.FITZONE_R19_B59_ISOLATED_INTEGRATION === "1") {
+    return (
+      u.port === "3306" &&
+      u.pathname === "/fitzone_r19_b59_gate_20261116223306" &&
+      decodeURIComponent(u.username) === "fitzone_b59_1917d4fa" &&
+      dbName === "fitzone_r19_b59_gate_20261116223306"
+    );
+  }
+
   const r13 =
     process.env.FITZONE_R13_ISOLATED_INTEGRATION === "1";
 

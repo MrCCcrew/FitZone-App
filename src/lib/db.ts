@@ -82,7 +82,16 @@ function getDatabaseUrl() {
           decodeURIComponent(url.username) === "fitzone_test_user"
         );
 
-    if (!allowedTestDatabase) {
+    const allowedR19B59 =
+      process.env.FITZONE_R19_B59_ISOLATED_INTEGRATION === "1" &&
+      process.env.NODE_ENV === "test" &&
+      url.protocol === "mysql:" &&
+      url.hostname === "127.0.0.1" &&
+      url.port === "3306" &&
+      database === "fitzone_r19_b59_gate_20261116223306" &&
+      decodeURIComponent(url.username) === "fitzone_b59_1917d4fa";
+
+    if (!allowedTestDatabase && !allowedR19B59) {
       throw new Error(
         "[TEST_SAFETY] Refusing database connection outside the selected test database",
       );
